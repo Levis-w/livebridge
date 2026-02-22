@@ -93,7 +93,7 @@ class AppStrings {
   String get request => isRu ? 'Запросить' : 'Request';
   String get grant => isRu ? 'Выдать' : 'Grant';
   String get manage => isRu ? 'Управлять' : 'Manage';
-  String get settingsTitle => 'Settings';
+  String get settingsTitle => isRu ? 'Settings' : 'Настройки';
   String get appPresentationSettings =>
       isRu ? 'Поведение приложений' : 'Per-app behavior';
   String get appPresentationScreenTitle =>

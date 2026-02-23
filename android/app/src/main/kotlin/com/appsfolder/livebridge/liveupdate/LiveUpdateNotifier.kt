@@ -9,7 +9,10 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -426,12 +429,18 @@ object LiveUpdateNotifier {
         val shouldTryNavigationArrowIcon =
             appPresentationOverride.iconSource == NotificationIconSource.NOTIFICATION &&
                     (smartRuleId == "navigation" || isLikelyNavigationPackage(sbn.packageName))
-        val navigationArrowIcon =
+        val navigationDrawable =
             if (shouldTryNavigationArrowIcon) {
-                resolveRemoteDrawableIcon(context, sbn)
+                resolveRemoteDrawableAssets(context, sbn)
             } else {
                 null
             }
+        val sourceLargeIcon = resolveSourceLargeIconBitmap(context, source)
+        val preferredLargeIcon = if (shouldTryNavigationArrowIcon) {
+            navigationDrawable?.bitmap ?: sourceLargeIcon
+        } else {
+            sourceLargeIcon
+        }
 
         val appName = resolveAppName(context, sbn.packageName)
         val allowRemoteViewTextFallback = shouldTryNavigationArrowIcon
@@ -475,10 +484,11 @@ object LiveUpdateNotifier {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
 
         val preferredSmallIcon = when (appPresentationOverride.iconSource) {
-            NotificationIconSource.NOTIFICATION -> navigationArrowIcon ?: sourceSmallIcon ?: appSmallIcon
+            NotificationIconSource.NOTIFICATION -> navigationDrawable?.icon ?: sourceSmallIcon ?: appSmallIcon
             NotificationIconSource.APP -> appSmallIcon ?: sourceSmallIcon
         }
         applySmallIcon(context, builder, preferredSmallIcon)
+        preferredLargeIcon?.let(builder::setLargeIcon)
 
         if (requestPromoted) {
             builder.setRequestPromotedOngoing(true)
@@ -960,7 +970,40 @@ object LiveUpdateNotifier {
         }
     }
 
-    private fun resolveRemoteDrawableIcon(context: Context, sbn: StatusBarNotification): IconCompat? {
+    private fun resolveSourceLargeIconBitmap(context: Context, notification: Notification): Bitmap? {
+        val extras = notification.extras
+        val fromExtras = extras.get(Notification.EXTRA_LARGE_ICON)
+        when (fromExtras) {
+            is Bitmap -> return fromExtras
+            is android.graphics.drawable.Icon -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    iconToBitmap(context, fromExtras)?.let { return it }
+                }
+            }
+        }
+
+        val fromBigExtras = extras.get(Notification.EXTRA_LARGE_ICON_BIG)
+        when (fromBigExtras) {
+            is Bitmap -> return fromBigExtras
+            is android.graphics.drawable.Icon -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    iconToBitmap(context, fromBigExtras)?.let { return it }
+                }
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            notification.getLargeIcon()?.let { return iconToBitmap(context, it) }
+        }
+
+        @Suppress("DEPRECATION")
+        return notification.largeIcon
+    }
+
+    private fun resolveRemoteDrawableAssets(
+        context: Context,
+        sbn: StatusBarNotification
+    ): RemoteDrawableAssets? {
         val packageContext = try {
             context.createPackageContext(sbn.packageName, 0)
         } catch (_: Exception) {
@@ -975,11 +1018,47 @@ object LiveUpdateNotifier {
                 ?: extractFirstRemoteDrawableResId(source.headsUpContentView, resources)
                 ?: return null
 
-        return try {
+        val icon = try {
             IconCompat.createWithResource(resources, sbn.packageName, drawableResId)
         } catch (_: Exception) {
             null
         }
+        val bitmap = try {
+            packageContext.getDrawable(drawableResId)?.let { drawable ->
+                drawableToBitmap(drawable)
+            }
+        } catch (_: Exception) {
+            null
+        }
+
+        if (icon == null && bitmap == null) {
+            return null
+        }
+        return RemoteDrawableAssets(
+            icon = icon,
+            bitmap = bitmap
+        )
+    }
+
+    private fun iconToBitmap(context: Context, icon: android.graphics.drawable.Icon): Bitmap? {
+        return try {
+            icon.loadDrawable(context)?.let(::drawableToBitmap)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun drawableToBitmap(drawable: Drawable): Bitmap {
+        if (drawable is android.graphics.drawable.BitmapDrawable && drawable.bitmap != null) {
+            return drawable.bitmap
+        }
+        val width = drawable.intrinsicWidth.coerceAtLeast(1).coerceAtMost(512)
+        val height = drawable.intrinsicHeight.coerceAtLeast(1).coerceAtMost(512)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
     }
 
     private fun extractRemoteViewTexts(notification: Notification): List<String> {
@@ -1453,6 +1532,11 @@ object LiveUpdateNotifier {
         val stageValue: Int,
         val stageMax: Int,
         val compactOrderCode: String?
+    )
+
+    private data class RemoteDrawableAssets(
+        val icon: IconCompat?,
+        val bitmap: Bitmap?
     )
 
     private data class SmartStageMatch(

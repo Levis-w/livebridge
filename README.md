@@ -2,6 +2,20 @@
 
 LiveBridge is a Flutter Android app with native Kotlin logic that converts regular notifications into Android Live Updates (Live Activity-like UX on Android 16+)
 
+## Screenshots
+
+### First Slide
+
+![First Slide](assets/screenshots/FirstSlide-lb.png)
+
+### Second Slide
+
+![Second Slide](assets/screenshots/SecondSlide-lb.png)
+
+### Third Slide
+
+![Third Slide](assets/screenshots/ThirdSlide-lb.png)
+
 ## Core features
 
 - Converts progress notifications into Live Updates
@@ -10,6 +24,7 @@ LiveBridge is a Flutter Android app with native Kotlin logic that converts regul
 - Real-time island navigation
 - App filtering modes
 - Per-app presentation overrides
+- Much, much more
 
 ## Small features you'll love
 

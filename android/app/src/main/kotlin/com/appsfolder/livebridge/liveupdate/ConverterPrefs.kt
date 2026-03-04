@@ -33,6 +33,17 @@ class ConverterPrefs(context: Context) {
         prefs.edit().putString(KEY_PACKAGE_MODE, mode.id).apply()
     }
 
+    fun getBypassPackageRulesRaw(): String {
+        return prefs.getString(KEY_BYPASS_PACKAGE_RULES, "") ?: ""
+    }
+
+    fun setBypassPackageRulesRaw(value: String?) {
+        val normalized = value?.trim().orEmpty()
+        prefs.edit()
+            .putString(KEY_BYPASS_PACKAGE_RULES, normalized)
+            .apply()
+    }
+
     fun getOnlyWithProgress(): Boolean {
         return prefs.getBoolean(KEY_ONLY_WITH_PROGRESS, true)
     }
@@ -318,6 +329,11 @@ class ConverterPrefs(context: Context) {
         }
     }
 
+    fun shouldBypassAllRulesForPackage(packageName: String): Boolean {
+        val packages = parsePackageRules(getBypassPackageRulesRaw())
+        return packageName.lowercase(Locale.ROOT) in packages
+    }
+
     private fun parsePackageRules(raw: String): Set<String> {
         return raw
             .split(',', ';', '\n', '\r', '\t', ' ')
@@ -342,6 +358,7 @@ class ConverterPrefs(context: Context) {
         private const val PREFS_NAME = "live_bridge_prefs"
         private const val KEY_PACKAGE_RULES = "package_rules"
         private const val KEY_PACKAGE_MODE = "package_mode"
+        private const val KEY_BYPASS_PACKAGE_RULES = "bypass_package_rules"
         private const val KEY_ONLY_WITH_PROGRESS = "only_with_progress"
         private const val KEY_TEXT_PROGRESS_ENABLED = "text_progress_enabled"
         private const val KEY_CONVERTER_ENABLED = "converter_enabled"

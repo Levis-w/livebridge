@@ -193,9 +193,15 @@ class AppStrings {
       isRu ? 'Приложения для конвертации' : 'Choose apps for conversion';
   String get otpPickerTitle =>
       isRu ? 'Приложения для кодов' : 'Choose apps for code detection';
+  String get bypassPickerTitle =>
+      isRu ? 'Приложения bypass' : 'Choose apps for bypass';
   String get applySelection => isRu ? 'Применить выбор' : 'Apply selection';
   String get searchAppHint =>
       isRu ? 'Поиск по названию или пакету' : 'Search by app or package';
+  String get showSystemApps =>
+      isRu ? 'Показать системные приложения' : 'Show system applications';
+  String get hideSystemApps =>
+      isRu ? 'Скрыть системные приложения' : 'Hide system applications';
   String get appsLoadFailed => isRu
       ? 'Не удалось загрузить список приложений.'
       : 'Unable to load installed apps list.';
@@ -227,6 +233,10 @@ class AppStrings {
   String get pickAppsHint => isRu
       ? 'Список используется только в режимах "Только указанные" или "Исключить".'
       : 'Selected app list is used only for include/exclude modes.';
+  String get bypassRulesTitle => isRu ? 'Bypass-приложения' : 'Bypass apps';
+  String get bypassRulesSubtitle => isRu
+      ? 'Приложения из списка всегда конвертируются в Live вне зависимости от настроек.'
+      : 'Listed apps are always converted to Live independently of settings.';
   String get saveRules => isRu ? 'Сохранить' : 'Save';
 
   String get smartDetectionTitle =>

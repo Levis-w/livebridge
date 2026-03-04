@@ -13,6 +13,8 @@ import '../platform/livebridge_platform.dart';
 import '../widgets/shared_widgets.dart';
 import 'app_presentation_settings_page.dart';
 
+enum _PackagePickerTarget { conversion, otp, bypass }
+
 class LiveBridgeHomePage extends StatefulWidget {
   const LiveBridgeHomePage({super.key});
 
@@ -27,7 +29,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
   static const String _projectGithubReleasesUrl =
       'https://github.com/appsfolder/livebridge/releases';
   static const String _projectGithubBugReportUrl =
-      'https://github.com/appsfolder/livebridge/issues/new?template=bug_report.yml&title=%5BBug%5D%20';
+      'https://github.com/appsfolder/livebridge/issues/new/choose?template=bug_report.yml';
   static const String _latestReleaseApiUrl =
       'https://api.github.com/repos/appsfolder/livebridge/releases/latest';
   static const String _dictionaryRawUrl =
@@ -37,6 +39,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
 
   final TextEditingController _rulesController = TextEditingController();
   final TextEditingController _otpRulesController = TextEditingController();
+  final TextEditingController _bypassRulesController = TextEditingController();
 
   Timer? _statusRefreshTimer;
   Timer? _updateRefreshTimer;
@@ -148,6 +151,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     _masterBlockedShakeController.dispose();
     _rulesController.dispose();
     _otpRulesController.dispose();
+    _bypassRulesController.dispose();
     super.dispose();
   }
 
@@ -244,6 +248,8 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
       final PackageMode packageMode = PackageModeId.from(
         await LiveBridgePlatform.getPackageMode(),
       );
+      final String bypassPackageRules =
+          await LiveBridgePlatform.getBypassPackageRules();
       final String otpPackageRules =
           await LiveBridgePlatform.getOtpPackageRules();
       final PackageMode otpPackageMode = PackageModeId.from(
@@ -310,6 +316,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         _packageMode = packageMode;
         _otpPackageMode = otpPackageMode;
         _rulesController.text = packageRules;
+        _bypassRulesController.text = bypassPackageRules;
         _otpRulesController.text = otpPackageRules;
         _isLoading = false;
       });
@@ -334,14 +341,22 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     }
   }
 
-  Future<void> _persistRules({required bool otpMode}) async {
+  Future<void> _persistRules({required _PackagePickerTarget target}) async {
     try {
-      if (otpMode) {
-        await LiveBridgePlatform.setOtpPackageRules(_otpRulesController.text);
-        await LiveBridgePlatform.setOtpPackageMode(_otpPackageMode.id);
-      } else {
-        await LiveBridgePlatform.setPackageRules(_rulesController.text);
-        await LiveBridgePlatform.setPackageMode(_packageMode.id);
+      switch (target) {
+        case _PackagePickerTarget.conversion:
+          await LiveBridgePlatform.setPackageRules(_rulesController.text);
+          await LiveBridgePlatform.setPackageMode(_packageMode.id);
+          break;
+        case _PackagePickerTarget.otp:
+          await LiveBridgePlatform.setOtpPackageRules(_otpRulesController.text);
+          await LiveBridgePlatform.setOtpPackageMode(_otpPackageMode.id);
+          break;
+        case _PackagePickerTarget.bypass:
+          await LiveBridgePlatform.setBypassPackageRules(
+            _bypassRulesController.text,
+          );
+          break;
       }
     } catch (_) {
       if (mounted) {
@@ -768,20 +783,38 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         .toSet();
   }
 
-  Future<void> _openPackagePicker({required bool otpMode}) async {
+  Future<void> _openPackagePicker({
+    required _PackagePickerTarget target,
+  }) async {
     if (!await _ensureAppListAccess()) return;
     HapticFeedback.lightImpact();
 
-    final List<InstalledApp> apps = await LiveBridgePlatform.getInstalledApps();
+    final List<InstalledApp> apps = await LiveBridgePlatform.getInstalledApps(
+      forceRefresh: true,
+    );
     if (!mounted || apps.isEmpty) {
       if (mounted) _snack(AppStrings.of(context).appsLoadFailed);
       return;
     }
 
-    final TextEditingController target = otpMode
-        ? _otpRulesController
-        : _rulesController;
-    final Set<String> initial = _parsePackagesFromInput(target.text);
+    final AppStrings s = AppStrings.of(context);
+    late final TextEditingController targetController;
+    late final String pickerTitle;
+    switch (target) {
+      case _PackagePickerTarget.conversion:
+        targetController = _rulesController;
+        pickerTitle = s.pickerTitle;
+        break;
+      case _PackagePickerTarget.otp:
+        targetController = _otpRulesController;
+        pickerTitle = s.otpPickerTitle;
+        break;
+      case _PackagePickerTarget.bypass:
+        targetController = _bypassRulesController;
+        pickerTitle = s.bypassPickerTitle;
+        break;
+    }
+    final Set<String> initial = _parsePackagesFromInput(targetController.text);
 
     final Set<String>? selected = await showModalBottomSheet<Set<String>>(
       context: context,
@@ -793,13 +826,13 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
       ),
       builder: (BuildContext context) {
         return PackagePickerSheet(
-          title: otpMode
-              ? AppStrings.of(context).otpPickerTitle
-              : AppStrings.of(context).pickerTitle,
+          title: pickerTitle,
           apps: apps,
           initialSelected: initial,
-          applyLabel: AppStrings.of(context).applySelection,
-          searchHint: AppStrings.of(context).searchAppHint,
+          applyLabel: s.applySelection,
+          searchHint: s.searchAppHint,
+          showSystemAppsLabel: s.showSystemApps,
+          hideSystemAppsLabel: s.hideSystemApps,
         );
       },
     );
@@ -808,9 +841,9 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
 
     final List<String> values = selected.toList()..sort();
     setState(() {
-      target.text = values.join('\n');
+      targetController.text = values.join('\n');
     });
-    await _persistRules(otpMode: otpMode);
+    await _persistRules(target: target);
   }
 
   Future<void> _openAppPresentationSettings() async {
@@ -1055,14 +1088,22 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     }
   }
 
+  Future<bool> _launchGithubUrl(Uri uri) async {
+    final bool openedInBrowserView = await launchUrl(
+      uri,
+      mode: LaunchMode.inAppBrowserView,
+    );
+    if (openedInBrowserView) {
+      return true;
+    }
+    return launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
   Future<void> _openGithub() async {
     final Uri uri = Uri.parse(
       _hasUpdateAlert ? _projectGithubReleasesUrl : _projectGithubUrl,
     );
-    final bool opened = await launchUrl(
-      uri,
-      mode: LaunchMode.externalApplication,
-    );
+    final bool opened = await _launchGithubUrl(uri);
     if (!opened && mounted) {
       _snack(AppStrings.of(context).githubOpenFailed);
     }
@@ -1085,6 +1126,9 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         await LiveBridgePlatform.getAppPresentationOverrides();
 
     final List<String> packageRules = _parseRulesText(_rulesController.text);
+    final List<String> bypassPackageRules = _parseRulesText(
+      _bypassRulesController.text,
+    );
     final List<String> otpPackageRules = _parseRulesText(
       _otpRulesController.text,
     );
@@ -1148,6 +1192,8 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         'package_mode': _packageMode.id,
         'package_rules': packageRules,
         'package_rules_count': packageRules.length,
+        'bypass_package_rules': bypassPackageRules,
+        'bypass_package_rules_count': bypassPackageRules.length,
         'otp_package_mode': _otpPackageMode.id,
         'otp_package_rules': otpPackageRules,
         'otp_package_rules_count': otpPackageRules.length,
@@ -1182,10 +1228,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
       _snack(copied ? s.bugReportCopied : s.bugReportCopyFailed);
     }
     final Uri uri = Uri.parse(_projectGithubBugReportUrl);
-    final bool opened = await launchUrl(
-      uri,
-      mode: LaunchMode.externalApplication,
-    );
+    final bool opened = await _launchGithubUrl(uri);
     if (!opened && mounted) {
       _snack(AppStrings.of(context).githubOpenFailed);
     }
@@ -1884,6 +1927,16 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     required AppStrings s,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final bool isLight = colorScheme.brightness == Brightness.light;
+    final Color fieldColor = isLight
+        ? Colors.white
+        : colorScheme.surfaceContainerLow;
+    final Color menuColor = isLight
+        ? Colors.white
+        : colorScheme.surfaceContainer;
+    final Color borderColor = colorScheme.primary.withValues(
+      alpha: isLight ? 0.5 : 0.65,
+    );
 
     return DropdownButtonFormField<PackageMode>(
       initialValue: currentValue,
@@ -1894,7 +1947,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         Icons.keyboard_arrow_down_rounded,
         color: colorScheme.onSurfaceVariant,
       ),
-      dropdownColor: colorScheme.surfaceContainer,
+      dropdownColor: menuColor,
       borderRadius: BorderRadius.circular(24),
       decoration: InputDecoration(
         labelText: label,
@@ -1904,10 +1957,18 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
           color: colorScheme.onSurfaceVariant,
         ),
         filled: true,
-        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        fillColor: fieldColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide.none,
+          borderSide: BorderSide(color: borderColor, width: 1.2),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: BorderSide(color: borderColor, width: 1.2),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: BorderSide(color: colorScheme.primary, width: 1.8),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 20,
@@ -1941,7 +2002,9 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
               if (val != null) {
                 HapticFeedback.selectionClick();
                 setState(() => _packageMode = val);
-                unawaited(_persistRules(otpMode: false));
+                unawaited(
+                  _persistRules(target: _PackagePickerTarget.conversion),
+                );
               }
             },
             onTap: () => HapticFeedback.lightImpact(),
@@ -1963,7 +2026,8 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
           ),
           const SizedBox(height: 16),
           _ruleButtonsRow(
-            onPick: () => _openPackagePicker(otpMode: false),
+            onPick: () =>
+                _openPackagePicker(target: _PackagePickerTarget.conversion),
             s: s,
           ),
           const Padding(
@@ -2004,6 +2068,34 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
             ),
             contentPadding: EdgeInsets.zero,
             activeThumbColor: Theme.of(context).colorScheme.primary,
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Divider(height: 1),
+          ),
+          Text(
+            s.bypassRulesTitle,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            s.bypassRulesSubtitle,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _selectedAppsNote(
+            selectedCount: _parsePackagesFromInput(
+              _bypassRulesController.text,
+            ).length,
+            s: s,
+          ),
+          const SizedBox(height: 8),
+          _ruleButtonsRow(
+            onPick: () =>
+                _openPackagePicker(target: _PackagePickerTarget.bypass),
+            s: s,
           ),
         ],
       ),
@@ -2182,7 +2274,9 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
                       if (val != null) {
                         HapticFeedback.selectionClick();
                         setState(() => _otpPackageMode = val);
-                        unawaited(_persistRules(otpMode: true));
+                        unawaited(
+                          _persistRules(target: _PackagePickerTarget.otp),
+                        );
                       }
                     },
                     onTap: () => HapticFeedback.lightImpact(),
@@ -2204,7 +2298,8 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
                   ),
                   const SizedBox(height: 16),
                   _ruleButtonsRow(
-                    onPick: () => _openPackagePicker(otpMode: true),
+                    onPick: () =>
+                        _openPackagePicker(target: _PackagePickerTarget.otp),
                     s: s,
                   ),
                 ],

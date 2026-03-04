@@ -9,6 +9,8 @@ import android.content.ComponentName
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager.MATCH_ALL
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -219,6 +221,12 @@ class MainActivity : FlutterActivity() {
             "getPackageMode" -> res.success(prefs.getPackageMode())
             "setPackageMode" -> {
                 prefs.setPackageMode(call.argument<String>("value"))
+                res.success(true)
+            }
+
+            "getBypassPackageRules" -> res.success(prefs.getBypassPackageRulesRaw())
+            "setBypassPackageRules" -> {
+                prefs.setBypassPackageRulesRaw(call.argument<String>("value"))
                 res.success(true)
             }
 
@@ -731,28 +739,54 @@ class MainActivity : FlutterActivity() {
             pm.queryIntentActivities(launcherIntent, MATCH_ALL)
         }
 
-        val entries = resolved
-            .asSequence()
-            .mapNotNull { resolveInfo ->
-                val activityInfo = resolveInfo.activityInfo ?: return@mapNotNull null
-                val appPackage = activityInfo.packageName
-                if (appPackage == packageName) {
-                    return@mapNotNull null
-                }
-                val resolvedLabel = resolveInfo.loadLabel(pm)?.toString()?.trim().orEmpty()
-                val label = if (resolvedLabel.isNotEmpty()) resolvedLabel else appPackage
-                val iconBytes = resolveCachedIconBytes(appPackage) ?: drawableToPngBytes(resolveInfo.loadIcon(pm))
-                val entry = mutableMapOf<String, Any>(
-                    "packageName" to appPackage,
-                    "label" to label
-                )
-                if (iconBytes != null) {
-                    entry["icon"] = iconBytes
-                    cacheIconBytes(appPackage, iconBytes)
-                }
-                entry
+        val entriesByPackage = linkedMapOf<String, MutableMap<String, Any>>()
+
+        resolved.forEach { resolveInfo ->
+            val activityInfo = resolveInfo.activityInfo ?: return@forEach
+            val appPackage = activityInfo.packageName
+            if (appPackage == packageName) {
+                return@forEach
             }
-            .distinctBy { it["packageName"] ?: "" }
+            val resolvedLabel = resolveInfo.loadLabel(pm)?.toString()?.trim().orEmpty()
+            val label = if (resolvedLabel.isNotEmpty()) resolvedLabel else appPackage
+            val iconBytes = resolveCachedIconBytes(appPackage) ?: drawableToPngBytes(resolveInfo.loadIcon(pm))
+            val isSystemApp = isSystemApp(activityInfo.applicationInfo)
+            val entry = mutableMapOf<String, Any>(
+                "packageName" to appPackage,
+                "label" to label,
+                "isSystem" to isSystemApp
+            )
+            if (iconBytes != null) {
+                entry["icon"] = iconBytes
+                cacheIconBytes(appPackage, iconBytes)
+            }
+            entriesByPackage[appPackage] = entry
+        }
+
+        getInstalledPackagesCompat(pm).forEach { packageInfo ->
+            val appInfo = packageInfo.applicationInfo ?: return@forEach
+            val appPackage = packageInfo.packageName.orEmpty()
+            if (appPackage.isEmpty() || appPackage == packageName) {
+                return@forEach
+            }
+            if (!isSystemApp(appInfo) || entriesByPackage.containsKey(appPackage)) {
+                return@forEach
+            }
+            val label = appInfo.loadLabel(pm)?.toString()?.trim().orEmpty().ifEmpty { appPackage }
+            val iconBytes = resolveCachedIconBytes(appPackage) ?: drawableToPngBytes(appInfo.loadIcon(pm))
+            val entry = mutableMapOf<String, Any>(
+                "packageName" to appPackage,
+                "label" to label,
+                "isSystem" to true
+            )
+            if (iconBytes != null) {
+                entry["icon"] = iconBytes
+                cacheIconBytes(appPackage, iconBytes)
+            }
+            entriesByPackage[appPackage] = entry
+        }
+
+        val entries = entriesByPackage.values
             .sortedBy { (it["label"] as? String)?.lowercase(Locale.getDefault()) ?: "" }
             .toList()
 
@@ -761,6 +795,24 @@ class MainActivity : FlutterActivity() {
             installedAppsCacheAtMs = now
         }
         return entries
+    }
+
+    private fun isSystemApp(applicationInfo: ApplicationInfo?): Boolean {
+        if (applicationInfo == null) {
+            return false
+        }
+        val flags = applicationInfo.flags
+        return (flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                (flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+    }
+
+    private fun getInstalledPackagesCompat(pm: PackageManager): List<PackageInfo> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(0L))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstalledPackages(0)
+        }
     }
 
     private fun resolveCachedIconBytes(packageName: String): ByteArray? {

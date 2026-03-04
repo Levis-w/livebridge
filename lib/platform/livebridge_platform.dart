@@ -47,6 +47,10 @@ class LiveBridgePlatform {
   static Future<String> getPackageMode() => _askStr('getPackageMode');
   static Future<bool> setPackageMode(String value) =>
       _askBool('setPackageMode', {'value': value});
+  static Future<String> getBypassPackageRules() =>
+      _askStr('getBypassPackageRules');
+  static Future<bool> setBypassPackageRules(String value) =>
+      _askBool('setBypassPackageRules', {'value': value});
 
   static Future<bool> getOnlyWithProgress() => _askBool('getOnlyWithProgress');
   static Future<bool> setOnlyWithProgress(bool value) =>
@@ -166,6 +170,7 @@ class LiveBridgePlatform {
             packageName: pkg,
             label: (m['label'] as String?) ?? pkg,
             icon: m['icon'] is Uint8List ? m['icon'] as Uint8List : null,
+            isSystem: m['isSystem'] == true,
           );
         })
         .where((app) => app.packageName.isNotEmpty)

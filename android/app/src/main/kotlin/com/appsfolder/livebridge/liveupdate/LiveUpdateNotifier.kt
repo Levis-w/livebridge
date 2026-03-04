@@ -121,8 +121,7 @@ object LiveUpdateNotifier {
         }
 
         return try {
-            val parserDictionary = LiveParserDictionaryLoader.get(context, prefs)
-            if (!passesBaseFilters(context.packageName, prefs, sbn, parserDictionary)) {
+            if (!passesCoreFilters(context.packageName, sbn)) {
                 val staleAggregateIds = synchronized(stateLock) {
                     clearAggregateTrackingForSbnKeyLocked(sbn.key)
                 }
@@ -133,6 +132,45 @@ object LiveUpdateNotifier {
             val appPresentationOverride = AppPresentationOverridesLoader
                 .get(prefs)
                 .resolve(sbn.packageName.lowercase(Locale.ROOT))
+            if (prefs.shouldBypassAllRulesForPackage(sbn.packageName)) {
+                val staleAggregateIds = synchronized(stateLock) {
+                    clearAggregateTrackingForSbnKeyLocked(sbn.key)
+                }
+                staleAggregateIds.forEach(manager::cancel)
+
+                val notification = buildMirroredNotification(
+                    context = context,
+                    sbn = sbn,
+                    appPresentationOverride = appPresentationOverride,
+                    progressOverride = null,
+                    otpOverride = null,
+                    smartShortTextOverride = null,
+                    requestPromoted = true,
+                    allowNavigationIconHeuristics = false
+                )
+                notifyWithPromotionFallback(
+                    context = context,
+                    manager = manager,
+                    notificationId = mirrorIdForKey(sbn.key),
+                    promotedNotification = notification,
+                    sbn = sbn,
+                    appPresentationOverride = appPresentationOverride,
+                    progressOverride = null,
+                    otpOverride = null,
+                    smartShortTextOverride = null,
+                    allowNavigationIconHeuristics = false
+                )
+                return true
+            }
+            val parserDictionary = LiveParserDictionaryLoader.get(context, prefs)
+            if (!passesBaseFilters(prefs, sbn, parserDictionary)) {
+                val staleAggregateIds = synchronized(stateLock) {
+                    clearAggregateTrackingForSbnKeyLocked(sbn.key)
+                }
+                staleAggregateIds.forEach(manager::cancel)
+                manager.cancel(mirrorIdForKey(sbn.key))
+                return false
+            }
             val source = sbn.notification
             val hasNativeProgress = hasProgress(source)
             val animatedIslandEnabled = prefs.getAnimatedIslandEnabled()
@@ -525,28 +563,11 @@ object LiveUpdateNotifier {
     }
 
     private fun passesBaseFilters(
-        appPackageName: String,
         prefs: ConverterPrefs,
         sbn: StatusBarNotification,
         parserDictionary: LiveParserDictionary
     ): Boolean {
-        if (sbn.packageName == appPackageName) {
-            return false
-        }
-
         val source = sbn.notification
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && source.channelId == CHANNEL_ID) {
-            return false
-        }
-
-        if (Build.VERSION.SDK_INT >= 36 && source.flags and 0x40000 != 0) {
-            return false
-        }
-
-        if (source.flags and Notification.FLAG_GROUP_SUMMARY != 0) {
-            return false
-        }
 
         if (isLikelyMediaPlaybackNotification(source)) {
             return false
@@ -559,6 +580,26 @@ object LiveUpdateNotifier {
         return prefs.isPackageAllowed(sbn.packageName)
     }
 
+    private fun passesCoreFilters(
+        appPackageName: String,
+        sbn: StatusBarNotification
+    ): Boolean {
+        if (appPackageName.isNotEmpty() && sbn.packageName == appPackageName) {
+            return false
+        }
+        val source = sbn.notification
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && source.channelId == CHANNEL_ID) {
+            return false
+        }
+        if (Build.VERSION.SDK_INT >= 36 && source.flags and 0x40000 != 0) {
+            return false
+        }
+        if (source.flags and Notification.FLAG_GROUP_SUMMARY != 0) {
+            return false
+        }
+        return true
+    }
+
     private fun buildMirroredNotification(
         context: Context,
         sbn: StatusBarNotification,
@@ -568,7 +609,8 @@ object LiveUpdateNotifier {
         smartShortTextOverride: String?,
         smartRuleId: String? = null,
         requestPromoted: Boolean,
-        otpShortTextOverride: String? = null
+        otpShortTextOverride: String? = null,
+        allowNavigationIconHeuristics: Boolean = true
     ): Notification {
         val runtimePrefs = ConverterPrefs(context)
         val parserDictionary = LiveParserDictionaryLoader.get(context, runtimePrefs)
@@ -577,7 +619,9 @@ object LiveUpdateNotifier {
         val appSmallIcon = resolveAppSmallIcon(context, sbn.packageName)
         val shouldTryNavigationArrowIcon =
             appPresentationOverride.iconSource == NotificationIconSource.NOTIFICATION &&
-                    (smartRuleId == "navigation" || isLikelyNavigationPackage(sbn.packageName, parserDictionary))
+                    (smartRuleId == "navigation" ||
+                            (allowNavigationIconHeuristics &&
+                                    isLikelyNavigationPackage(sbn.packageName, parserDictionary)))
         val navigationDrawable =
             if (shouldTryNavigationArrowIcon) {
                 resolveRemoteDrawableAssets(context, sbn)
@@ -738,7 +782,8 @@ object LiveUpdateNotifier {
         otpOverride: OtpMatch?,
         smartShortTextOverride: String?,
         smartRuleId: String? = null,
-        otpShortTextOverride: String? = null
+        otpShortTextOverride: String? = null,
+        allowNavigationIconHeuristics: Boolean = true
     ) {
         try {
             manager.notify(notificationId, promotedNotification)
@@ -752,7 +797,8 @@ object LiveUpdateNotifier {
                 smartShortTextOverride = smartShortTextOverride,
                 smartRuleId = smartRuleId,
                 requestPromoted = false,
-                otpShortTextOverride = otpShortTextOverride
+                otpShortTextOverride = otpShortTextOverride,
+                allowNavigationIconHeuristics = allowNavigationIconHeuristics
             )
             manager.notify(notificationId, fallback)
         }

@@ -261,6 +261,12 @@ class MainActivity : FlutterActivity() {
                 res.success(true)
             }
 
+            "getSyncDndEnabled" -> res.success(prefs.getSyncDndEnabled())
+            "setSyncDndEnabled" -> {
+                prefs.setSyncDndEnabled(call.argument<Boolean>("value") ?: false)
+                res.success(true)
+            }
+
             "getUpdateChecksEnabled" -> res.success(prefs.getUpdateChecksEnabled())
             "setUpdateChecksEnabled" -> {
                 prefs.setUpdateChecksEnabled(call.argument<Boolean>("value") ?: true)

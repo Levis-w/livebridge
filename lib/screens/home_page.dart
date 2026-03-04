@@ -52,6 +52,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
   bool _canPostPromoted = false;
   bool _converterEnabled = true;
   bool _keepAliveForegroundEnabled = false;
+  bool _syncDndEnabled = false;
   bool _aospCuttingEnabled = false;
   bool _animatedIslandEnabled = false;
   bool _hyperBridgeEnabled = false;
@@ -196,6 +197,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
           await LiveBridgePlatform.getConverterEnabled();
       final bool keepAliveForegroundEnabled =
           await LiveBridgePlatform.getKeepAliveForegroundEnabled();
+      final bool syncDndEnabled = await LiveBridgePlatform.getSyncDndEnabled();
       final bool aospCuttingEnabled =
           await LiveBridgePlatform.getAospCuttingEnabled();
       final bool animatedIslandEnabled =
@@ -292,6 +294,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         _canPostPromoted = canPostPromoted;
         _converterEnabled = converterEnabled;
         _keepAliveForegroundEnabled = keepAliveForegroundEnabled;
+        _syncDndEnabled = syncDndEnabled;
         _aospCuttingEnabled = aospCuttingEnabled;
         _animatedIslandEnabled = animatedIslandEnabled;
         _hyperBridgeEnabled = hyperBridgeEnabled;
@@ -393,6 +396,12 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     HapticFeedback.selectionClick();
     setState(() => _keepAliveForegroundEnabled = value);
     await LiveBridgePlatform.setKeepAliveForegroundEnabled(value);
+  }
+
+  Future<void> _setSyncDnd(bool value) async {
+    HapticFeedback.selectionClick();
+    setState(() => _syncDndEnabled = value);
+    await LiveBridgePlatform.setSyncDndEnabled(value);
   }
 
   Future<void> _setAospCutting(bool value) async {
@@ -1205,6 +1214,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
       'settings': <String, dynamic>{
         'converter_enabled': _converterEnabled,
         'keep_alive_foreground_enabled': _keepAliveForegroundEnabled,
+        'sync_dnd_enabled': _syncDndEnabled,
         'update_checks_enabled': _updateChecksEnabled,
         'only_with_progress': _onlyWithProgress,
         'text_progress_enabled': _textProgressEnabled,
@@ -1558,6 +1568,24 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
               _converterEnabled
                   ? s.keepAliveForegroundSubtitle
                   : s.keepAliveForegroundInactiveSubtitle,
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant,
+                fontSize: 13,
+              ),
+            ),
+            contentPadding: EdgeInsets.zero,
+            activeThumbColor: colorScheme.primary,
+          ),
+          const SizedBox(height: 8),
+          SwitchListTile.adaptive(
+            value: _syncDndEnabled,
+            onChanged: _setSyncDnd,
+            title: Text(
+              s.syncDndTitle,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text(
+              s.syncDndSubtitle,
               style: TextStyle(
                 color: colorScheme.onSurfaceVariant,
                 fontSize: 13,

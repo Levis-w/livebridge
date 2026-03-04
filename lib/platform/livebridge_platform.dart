@@ -66,6 +66,9 @@ class LiveBridgePlatform {
       _askBool('getKeepAliveForegroundEnabled');
   static Future<bool> setKeepAliveForegroundEnabled(bool value) =>
       _askBool('setKeepAliveForegroundEnabled', {'value': value});
+  static Future<bool> getSyncDndEnabled() => _askBool('getSyncDndEnabled');
+  static Future<bool> setSyncDndEnabled(bool value) =>
+      _askBool('setSyncDndEnabled', {'value': value});
   static Future<bool> getUpdateChecksEnabled() =>
       _askBool('getUpdateChecksEnabled');
   static Future<bool> setUpdateChecksEnabled(bool value) =>

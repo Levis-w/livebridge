@@ -119,6 +119,14 @@ object LiveUpdateNotifier {
             manager.cancel(mirrorIdForKey(sbn.key))
             return false
         }
+        if (prefs.getSyncDndEnabled() && isDoNotDisturbActive(context)) {
+            val staleAggregateIds = synchronized(stateLock) {
+                clearAggregateTrackingForSbnKeyLocked(sbn.key)
+            }
+            staleAggregateIds.forEach(manager::cancel)
+            manager.cancel(mirrorIdForKey(sbn.key))
+            return false
+        }
 
         return try {
             if (!passesCoreFilters(context.packageName, sbn)) {
@@ -545,6 +553,25 @@ object LiveUpdateNotifier {
             }
         } catch (error: Throwable) {
             Log.e(TAG, "Failed to mirror notification: ${sbn.key}", error)
+            false
+        }
+    }
+
+    private fun isDoNotDisturbActive(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return false
+        }
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            ?: return false
+        return try {
+            when (notificationManager.currentInterruptionFilter) {
+                NotificationManager.INTERRUPTION_FILTER_NONE,
+                NotificationManager.INTERRUPTION_FILTER_PRIORITY,
+                NotificationManager.INTERRUPTION_FILTER_ALARMS -> true
+
+                else -> false
+            }
+        } catch (_: Throwable) {
             false
         }
     }

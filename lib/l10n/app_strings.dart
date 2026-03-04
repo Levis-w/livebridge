@@ -115,6 +115,10 @@ class AppStrings {
   String get keepAliveForegroundInactiveSubtitle => isRu
       ? 'Включите LiveBridge, чтобы режим начал работать.'
       : 'Enable the LiveBridge for this mode to take effect.';
+  String get syncDndTitle => isRu ? 'Синхронизировать DnD' : 'Sync DnD';
+  String get syncDndSubtitle => isRu
+      ? 'Если на смартфоне включен режим Не беспокоить, уведомления LiveBridge не показываются.'
+      : 'When Do Not Disturb is enabled on the phone, LiveBridge notifications are hidden.';
   String get updateChecksTitle =>
       isRu ? 'Проверка обновлений' : 'Update checking';
   String get updateChecksSubtitle => isRu

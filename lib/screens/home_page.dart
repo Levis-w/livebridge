@@ -76,9 +76,14 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
   String _currentAppVersion = '';
   String _deviceLabelForWarning = '';
   final Set<String> _expandedSections = <String>{};
+  final Set<String> _expandedSelectedAppNotes = <String>{};
+  final Map<String, InstalledApp> _previewAppsByPackage =
+      <String, InstalledApp>{};
   bool _expandedSectionsLoaded = false;
   bool _hasPersistedExpandedSections = false;
   bool _didInitSectionDefaults = false;
+  bool _previewAppsLoaded = false;
+  bool _previewAppsLoading = false;
   PackageMode _packageMode = PackageMode.all;
   PackageMode _otpPackageMode = PackageMode.all;
   late final AnimationController _masterBlockedShakeController;
@@ -783,6 +788,31 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         .toSet();
   }
 
+  void _cachePreviewApps(List<InstalledApp> apps) {
+    for (final InstalledApp app in apps) {
+      _previewAppsByPackage[app.packageName.toLowerCase()] = app;
+    }
+    _previewAppsLoaded = true;
+  }
+
+  Future<void> _ensurePreviewAppsLoaded() async {
+    if (_previewAppsLoaded || _previewAppsLoading) {
+      return;
+    }
+    _previewAppsLoading = true;
+    try {
+      final List<InstalledApp> apps =
+          await LiveBridgePlatform.getInstalledApps();
+      _cachePreviewApps(apps);
+    } catch (_) {
+    } finally {
+      _previewAppsLoading = false;
+      if (mounted) {
+        setState(() {});
+      }
+    }
+  }
+
   Future<void> _openPackagePicker({
     required _PackagePickerTarget target,
   }) async {
@@ -798,6 +828,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     }
 
     final AppStrings s = AppStrings.of(context);
+    _cachePreviewApps(apps);
     late final TextEditingController targetController;
     late final String pickerTitle;
     switch (target) {
@@ -2012,9 +2043,8 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
           ),
           const SizedBox(height: 16),
           _selectedAppsNote(
-            selectedCount: _parsePackagesFromInput(
-              _rulesController.text,
-            ).length,
+            noteId: 'conversion',
+            selectedPackages: _parsePackagesFromInput(_rulesController.text),
             s: s,
           ),
           const SizedBox(height: 8),
@@ -2086,9 +2116,10 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
           ),
           const SizedBox(height: 16),
           _selectedAppsNote(
-            selectedCount: _parsePackagesFromInput(
+            noteId: 'bypass',
+            selectedPackages: _parsePackagesFromInput(
               _bypassRulesController.text,
-            ).length,
+            ),
             s: s,
           ),
           const SizedBox(height: 8),
@@ -2284,9 +2315,10 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
                   ),
                   const SizedBox(height: 16),
                   _selectedAppsNote(
-                    selectedCount: _parsePackagesFromInput(
+                    noteId: 'otp',
+                    selectedPackages: _parsePackagesFromInput(
                       _otpRulesController.text,
-                    ).length,
+                    ),
                     s: s,
                   ),
                   const SizedBox(height: 8),
@@ -2383,10 +2415,39 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
   }
 
   Widget _selectedAppsNote({
-    required int selectedCount,
+    required String noteId,
+    required Set<String> selectedPackages,
     required AppStrings s,
   }) {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final int selectedCount = selectedPackages.length;
+    final bool expanded = _expandedSelectedAppNotes.contains(noteId);
+
+    final List<InstalledApp> selectedApps =
+        selectedPackages.map((String packageName) {
+          return _previewAppsByPackage[packageName] ??
+              InstalledApp(packageName: packageName, label: packageName);
+        }).toList()..sort(
+          (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+        );
+
+    Future<void> toggleExpanded() async {
+      if (selectedCount == 0) {
+        return;
+      }
+      HapticFeedback.selectionClick();
+      final bool opening = !expanded;
+      setState(() {
+        if (opening) {
+          _expandedSelectedAppNotes.add(noteId);
+        } else {
+          _expandedSelectedAppNotes.remove(noteId);
+        }
+      });
+      if (opening) {
+        await _ensurePreviewAppsLoaded();
+      }
+    }
 
     return Container(
       width: double.infinity,
@@ -2395,19 +2456,100 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         color: colorScheme.primaryContainer.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
+      child: Column(
         children: <Widget>[
-          Icon(Icons.checklist_rounded, size: 20, color: colorScheme.primary),
-          const SizedBox(width: 12),
-          Text(
-            selectedCount == 0
-                ? s.noAppsSelected
-                : s.selectedAppsCount(selectedCount),
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: colorScheme.primary.withValues(alpha: 0.8),
+          GestureDetector(
+            onTap: selectedCount == 0 ? null : toggleExpanded,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    Icons.checklist_rounded,
+                    size: 20,
+                    color: colorScheme.primary,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      selectedCount == 0
+                          ? s.noAppsSelected
+                          : s.selectedAppsCount(selectedCount),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.primary.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: selectedCount == 0
+                        ? colorScheme.onSurfaceVariant
+                        : colorScheme.primary,
+                  ),
+                ],
+              ),
             ),
           ),
+          if (expanded && selectedApps.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+            ...selectedApps.map((InstalledApp app) {
+              final Widget compactIcon = app.icon != null
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(7),
+                      child: Image.memory(
+                        app.icon!,
+                        width: 24,
+                        height: 24,
+                        fit: BoxFit.cover,
+                      ),
+                    )
+                  : Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(7),
+                      ),
+                      child: Center(
+                        child: Text(
+                          app.label.isNotEmpty
+                              ? app.label[0].toUpperCase()
+                              : '?',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    );
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: <Widget>[
+                    compactIcon,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        app.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
         ],
       ),
     );

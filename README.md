@@ -81,6 +81,10 @@ For stable behavior, the app usually needs:
 - On AOSP, app icon and label behavior may differ from OEM firmware
 - AoD and `isOngoing` behavior vary across OEM vendors
 
+- NOT WORKING on Chinese OriginOS
+- NOT WORKING on CMF devices
+- Working badly on Nothing devices without Progress Glyph indicators
+
 ## Notes
 
 - Feel free to open issues or pull requests. LiveBridge is under active development

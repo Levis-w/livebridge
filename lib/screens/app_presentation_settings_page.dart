@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import '../l10n/app_strings.dart';
 import '../models/app_models.dart';
 import '../platform/livebridge_platform.dart';
+import '../utils/livebridge_haptics.dart';
 import '../widgets/shared_widgets.dart';
 
 const String _defaultAppPresentationKey = '__default__';
@@ -156,6 +157,7 @@ class _AppPresentationSettingsPageState
   }
 
   Future<void> _openEditor(InstalledApp app) async {
+    LiveBridgeHaptics.openSurface();
     final String key = app.packageName.toLowerCase();
     final AppPresentationOverride current = _overrides[key] ?? _defaultOverride;
     await showModalBottomSheet<void>(
@@ -191,6 +193,7 @@ class _AppPresentationSettingsPageState
   }
 
   Future<void> _openDefaultEditor() async {
+    LiveBridgeHaptics.openSurface();
     final AppStrings s = AppStrings.of(context);
     final InstalledApp virtualApp = InstalledApp(
       packageName: '',
@@ -234,7 +237,7 @@ class _AppPresentationSettingsPageState
 
   Future<void> _downloadOverrides() async {
     if (_busy) return;
-    HapticFeedback.selectionClick();
+    LiveBridgeHaptics.confirm();
     setState(() => _busy = true);
     try {
       final res =
@@ -256,7 +259,7 @@ class _AppPresentationSettingsPageState
 
   Future<void> _uploadOverrides() async {
     if (_busy) return;
-    HapticFeedback.selectionClick();
+    LiveBridgeHaptics.confirm();
     setState(() => _busy = true);
     try {
       final res = await FilePicker.platform.pickFiles(
@@ -497,7 +500,10 @@ class _AppPresentationSettingsPageState
                           color: colorScheme.brightness == Brightness.dark
                               ? colorScheme.onSurface
                               : Colors.grey[800],
-                          onPressed: () => Navigator.maybePop(context),
+                          onPressed: () {
+                            LiveBridgeHaptics.selection();
+                            Navigator.maybePop(context);
+                          },
                         ),
                         Expanded(
                           child: TextField(
@@ -539,7 +545,7 @@ class _AppPresentationSettingsPageState
                                 unawaited(_openDefaultEditor());
                                 break;
                               case _PerAppMenuAction.toggleSystemApps:
-                                HapticFeedback.selectionClick();
+                                LiveBridgeHaptics.toggle(!_showSystemApps);
                                 setState(
                                   () => _showSystemApps = !_showSystemApps,
                                 );
@@ -764,7 +770,7 @@ class _AppPresentationEditorSheetState
                 if (widget.showResetAction)
                   TextButton(
                     onPressed: () {
-                      HapticFeedback.selectionClick();
+                      LiveBridgeHaptics.warning();
                       setState(() {
                         _compactTextSource =
                             widget.resetValue.compactTextSource;
@@ -777,7 +783,7 @@ class _AppPresentationEditorSheetState
                 const Spacer(),
                 FilledButton.icon(
                   onPressed: () {
-                    HapticFeedback.selectionClick();
+                    LiveBridgeHaptics.confirm();
                     Navigator.of(context).maybePop();
                   },
                   icon: const Icon(Icons.check_rounded),

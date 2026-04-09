@@ -918,7 +918,7 @@ class MainActivity : FlutterActivity() {
         private const val UPDATE_CHANNEL_ID = "livebridge_update_checks"
         private const val UPDATE_CHANNEL_NAME = "LiveBridge Updates"
         private const val UPDATE_NOTIFICATION_ID = 32001
-        private const val DEFAULT_RELEASES_URL = "https://github.com/appsfolder/livebridge/releases"
+        private const val DEFAULT_RELEASES_URL = "https://appsfolder.github.io/livebridge/"
 
         private val installedAppsCacheLock = Any()
         private var installedAppsCache: List<Map<String, Any>>? = null

@@ -27,8 +27,8 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const String _projectGithubUrl =
       'https://github.com/appsfolder/livebridge';
-  static const String _projectGithubReleasesUrl =
-      'https://github.com/appsfolder/livebridge/releases';
+  static const String _projectDownloadPageUrl =
+      'https://appsfolder.github.io/livebridge/';
   static const String _projectGithubBugReportUrl =
       'https://github.com/appsfolder/livebridge/issues/new/choose?template=bug_report.yml';
   static const String _latestReleaseApiUrl =
@@ -665,7 +665,6 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
       final Map<dynamic, dynamic> data = decoded;
       final String tag = (data['tag_name'] as String?)?.trim() ?? '';
       final String name = (data['name'] as String?)?.trim() ?? '';
-      final String htmlUrl = (data['html_url'] as String?)?.trim() ?? '';
       final String version = tag.isNotEmpty ? tag : name;
       if (version.isEmpty) {
         return null;
@@ -673,7 +672,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
 
       return _GithubReleaseInfo(
         version: version,
-        htmlUrl: htmlUrl.isNotEmpty ? htmlUrl : _projectGithubReleasesUrl,
+        htmlUrl: _projectDownloadPageUrl,
       );
     } catch (_) {
       return null;
@@ -1175,7 +1174,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
   Future<void> _openGithub() async {
     LiveBridgeHaptics.openSurface();
     final Uri uri = Uri.parse(
-      _hasUpdateAlert ? _projectGithubReleasesUrl : _projectGithubUrl,
+      _hasUpdateAlert ? _projectDownloadPageUrl : _projectGithubUrl,
     );
     final bool opened = await _launchGithubUrl(uri);
     if (!opened && mounted) {
@@ -1779,7 +1778,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      _hasUpdateAlert ? s.githubReleasesUrl : s.githubUrl,
+                      _hasUpdateAlert ? s.downloadPageUrl : s.githubUrl,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: _hasUpdateAlert ? colorScheme.error : null,

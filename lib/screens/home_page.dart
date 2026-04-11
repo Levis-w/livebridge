@@ -2761,16 +2761,20 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     required Widget trailing,
     required Widget expandedChild,
   }) {
+    final ThemeData theme = Theme.of(context);
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final bool isLight = colorScheme.brightness == Brightness.light;
     final bool expanded = _expandedInlineSettings.contains(settingId);
     final Color outerBorderColor = expanded
         ? colorScheme.primary.withValues(alpha: 0.26)
         : Colors.transparent;
     final Color outerBackgroundColor = expanded
-        ? colorScheme.primaryContainer.withValues(alpha: 0.18)
+        ? (isLight
+              ? theme.scaffoldBackgroundColor
+              : colorScheme.primaryContainer.withValues(alpha: 0.18))
         : Colors.transparent;
     final Color rowHighlightColor = expanded
-        ? colorScheme.primary.withValues(alpha: 0.06)
+        ? colorScheme.primary.withValues(alpha: isLight ? 0.04 : 0.06)
         : Colors.transparent;
 
     return AnimatedContainer(
@@ -2911,8 +2915,9 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: colorScheme.surface.withValues(alpha: 0.86),
+          color: _expandablePanelBackgroundColor(colorScheme),
           borderRadius: BorderRadius.circular(20),
+          border: _expandablePanelBorder(colorScheme),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3036,8 +3041,9 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colorScheme.surface.withValues(alpha: 0.86),
+        color: _expandablePanelBackgroundColor(colorScheme),
         borderRadius: BorderRadius.circular(20),
+        border: _expandablePanelBorder(colorScheme),
       ),
       child: _buildInlinePanelSwitchRow(
         title: s.smartExternalDevicesIgnoreDebuggingTitle,
@@ -3054,8 +3060,9 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colorScheme.surface.withValues(alpha: 0.86),
+        color: _expandablePanelBackgroundColor(colorScheme),
         borderRadius: BorderRadius.circular(20),
+        border: _expandablePanelBorder(colorScheme),
       ),
       child: _buildInlinePanelSwitchRow(
         title: s.textProgressTitle,
@@ -3072,8 +3079,9 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colorScheme.surface.withValues(alpha: 0.86),
+        color: _expandablePanelBackgroundColor(colorScheme),
         borderRadius: BorderRadius.circular(20),
+        border: _expandablePanelBorder(colorScheme),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3171,6 +3179,22 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
           ),
         ),
       ),
+    );
+  }
+
+  Color _expandablePanelBackgroundColor(ColorScheme colorScheme) {
+    if (colorScheme.brightness == Brightness.light) {
+      return Colors.white;
+    }
+    return colorScheme.surface.withValues(alpha: 0.86);
+  }
+
+  Border? _expandablePanelBorder(ColorScheme colorScheme) {
+    if (colorScheme.brightness != Brightness.light) {
+      return null;
+    }
+    return Border.all(
+      color: colorScheme.outlineVariant.withValues(alpha: 0.5),
     );
   }
 

@@ -80,7 +80,7 @@ class NetworkSpeedForegroundService : Service() {
             return START_NOT_STICKY
         }
 
-        startForegroundCompat(notificationBuilder.build(latestSample))
+        startForegroundCompat(buildCurrentNotification())
         startMonitoringIfNeeded()
         return START_STICKY
     }
@@ -121,7 +121,14 @@ class NetworkSpeedForegroundService : Service() {
     private fun publishCurrentNotification() {
         notificationManager.notify(
             NOTIFICATION_ID,
-            notificationBuilder.build(latestSample)
+            buildCurrentNotification()
+        )
+    }
+
+    private fun buildCurrentNotification(): Notification {
+        return notificationBuilder.build(
+            sample = latestSample,
+            minPromotedBytesPerSecond = prefs.getNetworkSpeedMinThresholdBytesPerSecond()
         )
     }
 

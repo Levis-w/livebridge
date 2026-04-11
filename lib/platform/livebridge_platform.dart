@@ -23,6 +23,14 @@ class LiveBridgePlatform {
     return res ?? '';
   }
 
+  static Future<int> _askInt(
+    String method, [
+    Map<String, dynamic>? args,
+  ]) async {
+    final num? res = await _channel.invokeMethod<num>(method, args);
+    return res?.toInt() ?? 0;
+  }
+
   static Future<bool> isNotificationListenerEnabled() =>
       _askBool('isNotificationListenerEnabled');
   static Future<bool> isDeviceBlocked() => _askBool('isDeviceBlocked');
@@ -70,6 +78,10 @@ class LiveBridgePlatform {
       _askBool('getNetworkSpeedEnabled');
   static Future<bool> setNetworkSpeedEnabled(bool value) =>
       _askBool('setNetworkSpeedEnabled', {'value': value});
+  static Future<int> getNetworkSpeedMinThresholdBytesPerSecond() =>
+      _askInt('getNetworkSpeedMinThresholdBytesPerSecond');
+  static Future<bool> setNetworkSpeedMinThresholdBytesPerSecond(int value) =>
+      _askBool('setNetworkSpeedMinThresholdBytesPerSecond', {'value': value});
   static Future<bool> getSyncDndEnabled() => _askBool('getSyncDndEnabled');
   static Future<bool> setSyncDndEnabled(bool value) =>
       _askBool('setSyncDndEnabled', {'value': value});

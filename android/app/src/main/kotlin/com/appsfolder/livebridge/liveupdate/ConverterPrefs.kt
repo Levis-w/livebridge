@@ -88,6 +88,20 @@ class ConverterPrefs(context: Context) {
         prefs.edit().putBoolean(KEY_NETWORK_SPEED_ENABLED, value).apply()
     }
 
+    fun getNetworkSpeedMinThresholdBytesPerSecond(): Long {
+        return prefs.getLong(KEY_NETWORK_SPEED_MIN_THRESHOLD_BYTES_PER_SECOND, 0L)
+            .coerceAtLeast(0L)
+    }
+
+    fun setNetworkSpeedMinThresholdBytesPerSecond(value: Long) {
+        prefs.edit()
+            .putLong(
+                KEY_NETWORK_SPEED_MIN_THRESHOLD_BYTES_PER_SECOND,
+                value.coerceAtLeast(0L)
+            )
+            .apply()
+    }
+
     fun getSyncDndEnabled(): Boolean {
         return prefs.getBoolean(KEY_SYNC_DND_ENABLED, true)
     }
@@ -388,6 +402,8 @@ class ConverterPrefs(context: Context) {
         private const val KEY_CONVERTER_ENABLED = "converter_enabled"
         private const val KEY_KEEP_ALIVE_FOREGROUND_ENABLED = "keep_alive_foreground_enabled"
         private const val KEY_NETWORK_SPEED_ENABLED = "network_speed_enabled"
+        private const val KEY_NETWORK_SPEED_MIN_THRESHOLD_BYTES_PER_SECOND =
+            "network_speed_min_threshold_bytes_per_second"
         private const val KEY_SYNC_DND_ENABLED = "sync_dnd_enabled"
         private const val KEY_UPDATE_CHECKS_ENABLED = "update_checks_enabled"
         private const val KEY_UPDATE_LAST_CHECK_AT_MS = "update_last_check_at_ms"

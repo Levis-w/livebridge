@@ -39,10 +39,17 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
       'https://raw.githubusercontent.com/appsfolder/livebridge/refs/heads/main/android/app/src/main/assets/liveupdate_dictionary.json';
   static const bool _dictionaryAutoSyncEnabled = false;
   static const Duration _updateCheckInterval = Duration(hours: 6);
+  static const String _expandableSettingNetworkSpeed = 'network_speed';
+  static const int _networkSpeedThresholdStepBytesPerSecond = 8 * 1024;
+  static const int _networkSpeedThresholdMaxBytesPerSecond = 1024 * 1024;
 
   final TextEditingController _rulesController = TextEditingController();
   final TextEditingController _otpRulesController = TextEditingController();
   final TextEditingController _bypassRulesController = TextEditingController();
+  final ValueNotifier<int> _networkSpeedThresholdDraftBytesPerSecond =
+      ValueNotifier<int>(0);
+  final ValueNotifier<double> _networkSpeedThresholdSliderPosition =
+      ValueNotifier<double>(0);
 
   Timer? _statusRefreshTimer;
   Timer? _updateRefreshTimer;
@@ -56,6 +63,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
   bool _converterEnabled = true;
   bool _keepAliveForegroundEnabled = false;
   bool _networkSpeedEnabled = false;
+  int _networkSpeedMinThresholdBytesPerSecond = 0;
   bool _syncDndEnabled = false;
   bool _aospCuttingEnabled = false;
   bool _animatedIslandEnabled = false;
@@ -83,6 +91,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
   String _deviceLabelForWarning = '';
   final Set<String> _expandedSections = <String>{};
   final Set<String> _expandedSelectedAppNotes = <String>{};
+  final Set<String> _expandedInlineSettings = <String>{};
   final Map<String, InstalledApp> _previewAppsByPackage =
       <String, InstalledApp>{};
   bool _expandedSectionsLoaded = false;
@@ -95,6 +104,8 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
   late final AnimationController _masterBlockedShakeController;
   late final Animation<double> _masterBlockedShakeOffset;
   bool _masterBlockedHapticInProgress = false;
+  int _lastNetworkSpeedSliderHapticValue = -1;
+  int _lastNetworkSpeedSliderHapticAtMs = 0;
 
   bool get _canToggleMaster => _listenerEnabled && _notificationsGranted;
   bool get _masterSwitchValue => _canToggleMaster && _converterEnabled;
@@ -163,6 +174,8 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     _rulesController.dispose();
     _otpRulesController.dispose();
     _bypassRulesController.dispose();
+    _networkSpeedThresholdDraftBytesPerSecond.dispose();
+    _networkSpeedThresholdSliderPosition.dispose();
     super.dispose();
   }
 
@@ -204,6 +217,8 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
           await LiveBridgePlatform.getKeepAliveForegroundEnabled();
       final bool networkSpeedEnabled =
           await LiveBridgePlatform.getNetworkSpeedEnabled();
+      final int networkSpeedMinThresholdBytesPerSecond =
+          await LiveBridgePlatform.getNetworkSpeedMinThresholdBytesPerSecond();
       final bool syncDndEnabled = await LiveBridgePlatform.getSyncDndEnabled();
       final bool aospCuttingEnabled =
           await LiveBridgePlatform.getAospCuttingEnabled();
@@ -302,6 +317,14 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         _converterEnabled = converterEnabled;
         _keepAliveForegroundEnabled = keepAliveForegroundEnabled;
         _networkSpeedEnabled = networkSpeedEnabled;
+        _networkSpeedMinThresholdBytesPerSecond =
+            networkSpeedMinThresholdBytesPerSecond;
+        _networkSpeedThresholdDraftBytesPerSecond.value =
+            networkSpeedMinThresholdBytesPerSecond;
+        _networkSpeedThresholdSliderPosition.value =
+            _networkSpeedSliderPositionForBytesPerSecond(
+              networkSpeedMinThresholdBytesPerSecond,
+            );
         _syncDndEnabled = syncDndEnabled;
         _aospCuttingEnabled = aospCuttingEnabled;
         _animatedIslandEnabled = animatedIslandEnabled;
@@ -410,6 +433,36 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     LiveBridgeHaptics.toggle(value);
     setState(() => _networkSpeedEnabled = value);
     await LiveBridgePlatform.setNetworkSpeedEnabled(value);
+  }
+
+  Future<void> _setNetworkSpeedMinThresholdBytesPerSecond(
+    int value, {
+    bool persist = true,
+  }) async {
+    final int normalized = value
+        .clamp(0, _networkSpeedThresholdMaxBytesPerSecond)
+        .toInt();
+    if (normalized == _networkSpeedMinThresholdBytesPerSecond && !persist) {
+      return;
+    }
+
+    if (normalized != _networkSpeedMinThresholdBytesPerSecond) {
+      setState(() => _networkSpeedMinThresholdBytesPerSecond = normalized);
+    }
+    if (_networkSpeedThresholdDraftBytesPerSecond.value != normalized) {
+      _networkSpeedThresholdDraftBytesPerSecond.value = normalized;
+    }
+    final double sliderPosition = _networkSpeedSliderPositionForBytesPerSecond(
+      normalized,
+    );
+    if (_networkSpeedThresholdSliderPosition.value != sliderPosition) {
+      _networkSpeedThresholdSliderPosition.value = sliderPosition;
+    }
+    if (persist) {
+      await LiveBridgePlatform.setNetworkSpeedMinThresholdBytesPerSecond(
+        normalized,
+      );
+    }
   }
 
   Future<void> _setSyncDnd(bool value) async {
@@ -803,6 +856,41 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     LiveBridgeHaptics.toggle(value);
     setState(() => _otpAutoCopyEnabled = value);
     await LiveBridgePlatform.setOtpAutoCopyEnabled(value);
+  }
+
+  void _toggleInlineSetting(String settingId) {
+    final bool opening = !_expandedInlineSettings.contains(settingId);
+    setState(() {
+      if (opening) {
+        _expandedInlineSettings.add(settingId);
+      } else {
+        _expandedInlineSettings.remove(settingId);
+      }
+    });
+    unawaited(LiveBridgeHaptics.expand(opening));
+  }
+
+  void _updateNetworkSpeedThresholdDraft(double sliderValue) {
+    if (_networkSpeedThresholdSliderPosition.value != sliderValue) {
+      _networkSpeedThresholdSliderPosition.value = sliderValue;
+    }
+
+    final int snappedValue = _snapNetworkSpeedThresholdBytesPerSecond(
+      sliderValue,
+    );
+    if (_networkSpeedThresholdDraftBytesPerSecond.value == snappedValue) {
+      return;
+    }
+
+    _networkSpeedThresholdDraftBytesPerSecond.value = snappedValue;
+
+    final int nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (snappedValue != _lastNetworkSpeedSliderHapticValue &&
+        nowMs - _lastNetworkSpeedSliderHapticAtMs >= 72) {
+      _lastNetworkSpeedSliderHapticValue = snappedValue;
+      _lastNetworkSpeedSliderHapticAtMs = nowMs;
+      unawaited(LiveBridgeHaptics.selection());
+    }
   }
 
   Set<String> _parsePackagesFromInput(String value) {
@@ -1247,6 +1335,8 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         'converter_enabled': _converterEnabled,
         'keep_alive_foreground_enabled': _keepAliveForegroundEnabled,
         'network_speed_enabled': _networkSpeedEnabled,
+        'network_speed_min_threshold_bytes_per_second':
+            _networkSpeedMinThresholdBytesPerSecond,
         'sync_dnd_enabled': _syncDndEnabled,
         'update_checks_enabled': _updateChecksEnabled,
         'only_with_progress': _onlyWithProgress,
@@ -2044,9 +2134,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
                 const SizedBox(height: 6),
                 Text(
                   s.samsungWarningBody,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     height: 1.4,
                     color: colorScheme.onSurface.withValues(alpha: 0.82),
                   ),
@@ -2413,24 +2501,15 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
             activeThumbColor: Theme.of(context).colorScheme.primary,
           ),
           const SizedBox(height: 8),
-          SwitchListTile.adaptive(
+          _buildExpandableSwitchTile(
+            settingId: _expandableSettingNetworkSpeed,
             value: _networkSpeedEnabled,
             onChanged: _setNetworkSpeedEnabled,
-            title: Text(
-              s.networkSpeedTitle,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            subtitle: Text(
-              _converterEnabled
-                  ? s.networkSpeedSubtitle
-                  : s.networkSpeedInactiveSubtitle,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontSize: 13,
-              ),
-            ),
-            contentPadding: EdgeInsets.zero,
-            activeThumbColor: Theme.of(context).colorScheme.primary,
+            title: s.networkSpeedTitle,
+            subtitle: _converterEnabled
+                ? s.networkSpeedSubtitle
+                : s.networkSpeedInactiveSubtitle,
+            expandedChild: _buildNetworkSpeedThresholdPanel(s),
           ),
         ],
       ),
@@ -2593,6 +2672,324 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         ),
       ),
     );
+  }
+
+  Widget _buildExpandableSwitchTile({
+    required String settingId,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    required String title,
+    required String subtitle,
+    required Widget expandedChild,
+  }) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final bool expanded = _expandedInlineSettings.contains(settingId);
+    final Color outerBorderColor = expanded
+        ? colorScheme.primary.withValues(alpha: 0.26)
+        : Colors.transparent;
+    final Color outerBackgroundColor = expanded
+        ? colorScheme.primaryContainer.withValues(alpha: 0.18)
+        : Colors.transparent;
+    final Color rowHighlightColor = expanded
+        ? colorScheme.primary.withValues(alpha: 0.06)
+        : Colors.transparent;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(
+        color: outerBackgroundColor,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: outerBorderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              splashFactory: NoSplash.splashFactory,
+              overlayColor: const WidgetStatePropertyAll<Color>(
+                Colors.transparent,
+              ),
+              splashColor: Colors.transparent,
+              highlightColor: Colors.transparent,
+              hoverColor: Colors.transparent,
+              focusColor: Colors.transparent,
+              onTap: () => _toggleInlineSetting(settingId),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                decoration: BoxDecoration(
+                  color: rowHighlightColor,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    expanded ? 16 : 0,
+                    10,
+                    expanded ? 10 : 0,
+                    10,
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              title,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              subtitle,
+                              style: TextStyle(
+                                color: colorScheme.onSurfaceVariant,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: expanded
+                              ? colorScheme.primary.withValues(alpha: 0.12)
+                              : Colors.transparent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: AnimatedRotation(
+                          turns: expanded ? 0.25 : 0.0,
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeInOutCubic,
+                          child: Icon(
+                            Icons.chevron_right_rounded,
+                            size: 20,
+                            color: expanded
+                                ? colorScheme.primary
+                                : colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Switch.adaptive(
+                        value: value,
+                        onChanged: onChanged,
+                        activeThumbColor: colorScheme.primary,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0, end: expanded ? 1 : 0),
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: expandedChild,
+            ),
+            builder: (BuildContext context, double value, Widget? child) {
+              return ClipRect(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  heightFactor: value,
+                  child: IgnorePointer(
+                    ignoring: value < 0.99,
+                    child: Opacity(
+                      opacity: value.clamp(0, 1),
+                      child: Transform.translate(
+                        offset: Offset(0, (1 - value) * -14),
+                        child: child,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNetworkSpeedThresholdPanel(AppStrings s) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final double sliderMax =
+        _networkSpeedThresholdMaxBytesPerSecond /
+        _networkSpeedThresholdStepBytesPerSecond;
+
+    return RepaintBoundary(
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colorScheme.surface.withValues(alpha: 0.86),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    s.networkSpeedThresholdTitle,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                ValueListenableBuilder<int>(
+                  valueListenable: _networkSpeedThresholdDraftBytesPerSecond,
+                  builder: (BuildContext context, int currentThreshold, Widget? _) {
+                    final String currentValueLabel = currentThreshold <= 0
+                        ? s.networkSpeedThresholdAlways
+                        : '≥ ${_formatNetworkSpeedBytesPerSecond(currentThreshold)}';
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        currentValueLabel,
+                        style: TextStyle(
+                          color: colorScheme.primary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              s.networkSpeedThresholdSubtitle,
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ValueListenableBuilder<double>(
+              valueListenable: _networkSpeedThresholdSliderPosition,
+              builder: (BuildContext context, double sliderValue, Widget? _) {
+                final int currentThreshold =
+                    _snapNetworkSpeedThresholdBytesPerSecond(sliderValue);
+                final String currentValueLabel = currentThreshold <= 0
+                    ? s.networkSpeedThresholdAlways
+                    : '≥ ${_formatNetworkSpeedBytesPerSecond(currentThreshold)}';
+                return SliderTheme(
+                  data: SliderTheme.of(
+                    context,
+                  ).copyWith(overlayShape: SliderComponentShape.noOverlay),
+                  child: Slider.adaptive(
+                    value: sliderValue.clamp(0, sliderMax),
+                    min: 0,
+                    max: sliderMax,
+                    label: currentValueLabel,
+                    onChangeStart: (double value) {
+                      _networkSpeedThresholdSliderPosition.value = value;
+                      _lastNetworkSpeedSliderHapticValue =
+                          _snapNetworkSpeedThresholdBytesPerSecond(value);
+                      _lastNetworkSpeedSliderHapticAtMs = 0;
+                    },
+                    onChanged: _updateNetworkSpeedThresholdDraft,
+                    onChangeEnd: (double value) {
+                      final int nextValue =
+                          _snapNetworkSpeedThresholdBytesPerSecond(value);
+                      _lastNetworkSpeedSliderHapticValue = -1;
+                      _networkSpeedThresholdSliderPosition.value =
+                          _networkSpeedSliderPositionForBytesPerSecond(
+                            nextValue,
+                          );
+                      unawaited(
+                        _setNetworkSpeedMinThresholdBytesPerSecond(nextValue),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    s.networkSpeedThresholdAlways,
+                    style: TextStyle(
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                Text(
+                  _formatNetworkSpeedBytesPerSecond(
+                    _networkSpeedThresholdMaxBytesPerSecond,
+                  ),
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  int _snapNetworkSpeedThresholdBytesPerSecond(double sliderValue) {
+    final int snappedValue =
+        sliderValue.round() * _networkSpeedThresholdStepBytesPerSecond;
+    return snappedValue
+        .clamp(0, _networkSpeedThresholdMaxBytesPerSecond)
+        .toInt();
+  }
+
+  double _networkSpeedSliderPositionForBytesPerSecond(int bytesPerSecond) {
+    return (bytesPerSecond / _networkSpeedThresholdStepBytesPerSecond)
+        .clamp(
+          0,
+          _networkSpeedThresholdMaxBytesPerSecond /
+              _networkSpeedThresholdStepBytesPerSecond,
+        )
+        .toDouble();
+  }
+
+  String _formatNetworkSpeedBytesPerSecond(int bytesPerSecond) {
+    final int value = bytesPerSecond.clamp(0, 1 << 31).toInt();
+    if (value < 1024) {
+      return '${value}B/s';
+    }
+    if (value < 1024 * 1024) {
+      return _formatCompactNetworkSpeedValue(value / 1024, 'K/s');
+    }
+    if (value < 1024 * 1024 * 1024) {
+      return _formatCompactNetworkSpeedValue(value / (1024 * 1024), 'M/s');
+    }
+    return _formatCompactNetworkSpeedValue(value / (1024 * 1024 * 1024), 'G/s');
+  }
+
+  String _formatCompactNetworkSpeedValue(double value, String suffix) {
+    final String formatted = value < 10
+        ? value.toStringAsFixed(1)
+        : value.toStringAsFixed(0);
+    return '$formatted$suffix';
   }
 
   Widget _ruleButtonsRow({

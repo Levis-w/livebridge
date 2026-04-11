@@ -275,6 +275,18 @@ class MainActivity : FlutterActivity() {
                 res.success(true)
             }
 
+            "getNetworkSpeedMinThresholdBytesPerSecond" -> {
+                syncNetworkSpeedForegroundService(prefs)
+                res.success(prefs.getNetworkSpeedMinThresholdBytesPerSecond())
+            }
+
+            "setNetworkSpeedMinThresholdBytesPerSecond" -> {
+                val value = call.argument<Number>("value")?.toLong() ?: 0L
+                prefs.setNetworkSpeedMinThresholdBytesPerSecond(value)
+                syncNetworkSpeedForegroundService(prefs)
+                res.success(true)
+            }
+
             "getSyncDndEnabled" -> res.success(prefs.getSyncDndEnabled())
             "setSyncDndEnabled" -> {
                 prefs.setSyncDndEnabled(call.argument<Boolean>("value") ?: false)

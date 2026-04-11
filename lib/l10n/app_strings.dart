@@ -87,8 +87,9 @@ class AppStrings {
   String backgroundWarningBody(String deviceLabel) => isRu
       ? 'Для $deviceLabel нужно вручную разрешить автозапуск и работу без ограничений в фоне, иначе Live Updates могут не появляться или зависать.'
       : 'On $deviceLabel, allow autostart and unrestricted background activity, otherwise Live Updates may stop appearing or freeze.';
-  String get samsungWarningTitle =>
-      isRu ? 'Для Samsung есть версия лучше' : 'A better build is available for Samsung';
+  String get samsungWarningTitle => isRu
+      ? 'Для Samsung есть версия лучше'
+      : 'A better build is available for Samsung';
   String get samsungWarningBody => isRu
       ? 'Для Samsung доступна специальная сборка LiveBridge с улучшенной поддержкой Samsung-функций. Лучше установить ее вместо обычной версии.'
       : 'There is a dedicated LiveBridge build for Samsung devices with improved Samsung-specific support. It is recommended over the regular build.';
@@ -125,6 +126,13 @@ class AppStrings {
   String get networkSpeedInactiveSubtitle => isRu
       ? 'Включите LiveBridge, чтобы монитор скорости начал работать.'
       : 'Enable LiveBridge for the network speed monitor to start working.';
+  String get networkSpeedThresholdTitle =>
+      isRu ? 'Минимальная скорость для показа' : 'Minimum speed to show';
+  String get networkSpeedThresholdSubtitle => isRu
+      ? 'Лайв-элемент появится, когда суммарная скорость загрузки и отдачи достигнет этого порога.'
+      : 'The live element appears when combined download and upload reach this threshold.';
+  String get networkSpeedThresholdAlways =>
+      isRu ? 'Показывать всегда' : 'Always show';
   String get syncDndTitle => isRu ? 'Синхронизировать DnD' : 'Sync DnD';
   String get syncDndSubtitle => isRu
       ? 'Если на смартфоне включен режим Не беспокоить, уведомления LiveBridge не показываются.'

@@ -505,6 +505,67 @@
         font-size: 0.85rem;
       }
 
+      .live-counter {
+        display: inline-flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 0;
+        white-space: pre-wrap;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .live-counter-segment {
+        display: inline-flex;
+        align-items: baseline;
+        white-space: pre;
+      }
+
+      .live-counter-char {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 1.06em;
+        overflow: hidden;
+        line-height: 1;
+      }
+
+      .live-counter-char.is-digit {
+        min-width: 0.62em;
+      }
+
+      .live-counter-glyph,
+      .live-counter-face {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 100%;
+      }
+
+      .live-counter-stack {
+        position: relative;
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      .live-counter-face {
+        position: absolute;
+        inset: 0;
+      }
+
+      .live-counter-face--new {
+        transform: translateY(112%);
+      }
+
+      .live-counter-char.is-flipping .live-counter-face--old {
+        animation: live-counter-old-up 520ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+
+      .live-counter-char.is-flipping .live-counter-face--new {
+        animation: live-counter-new-up 520ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+
       .btn-disabled {
         opacity: 0.5;
         pointer-events: none;
@@ -599,6 +660,11 @@
         .faq-panel {
           transition: none;
         }
+
+        .live-counter-char.is-flipping .live-counter-face--old,
+        .live-counter-char.is-flipping .live-counter-face--new {
+          animation: none;
+        }
       }
 
       .footer {
@@ -619,6 +685,26 @@
         }
         50% {
           transform: translateY(5px);
+        }
+      }
+
+      @keyframes live-counter-old-up {
+        from {
+          transform: translateY(0);
+          opacity: 1;
+        }
+        to {
+          transform: translateY(-115%);
+          opacity: 0.28;
+        }
+      }
+
+      @keyframes live-counter-new-up {
+        from {
+          transform: translateY(112%);
+        }
+        to {
+          transform: translateY(0);
         }
       }
 
@@ -1260,6 +1346,15 @@
       const rawAssetBase = `https://raw.githubusercontent.com/${owner}/${repo}/main/assets`;
       const numberFormat = new Intl.NumberFormat("en-US");
       const defaultRecommendedBuild = "armv8a";
+      const liveRefreshMinMs = 5200;
+      const liveRefreshJitterMs = 900;
+      const liveRefreshHiddenMs = 15000;
+      const liveRefreshErrorMs = 30000;
+      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+      const counterNumberPattern = /\d[\d,]*/g;
+      let releaseDataPollTimer = null;
+      let releaseDataRequestInFlight = false;
+      let releaseDataEtag = "";
 
       const builds = [
         {
@@ -1286,6 +1381,185 @@
 
       const sumDownloads = (assets) =>
         assets.reduce((total, asset) => total + (asset.download_count || 0), 0);
+
+      const getNextLiveRefreshDelay = () =>
+        liveRefreshMinMs + Math.floor(Math.random() * liveRefreshJitterMs);
+
+      function clearReleaseDataRefreshTimer() {
+        if (releaseDataPollTimer !== null) {
+          window.clearTimeout(releaseDataPollTimer);
+          releaseDataPollTimer = null;
+        }
+      }
+
+      function scheduleReleaseDataRefresh(delayMs = getNextLiveRefreshDelay()) {
+        clearReleaseDataRefreshTimer();
+        releaseDataPollTimer = window.setTimeout(() => {
+          if (document.hidden) {
+            scheduleReleaseDataRefresh(liveRefreshHiddenMs);
+            return;
+          }
+          loadReleaseData({ preserveOnError: true });
+        }, Math.max(delayMs, 1500));
+      }
+
+      function splitCounterSegments(value) {
+        const text = String(value ?? "");
+        const segments = [];
+        let cursor = 0;
+        let match;
+
+        counterNumberPattern.lastIndex = 0;
+        while ((match = counterNumberPattern.exec(text)) !== null) {
+          if (match.index > cursor) {
+            segments.push({ type: "text", value: text.slice(cursor, match.index) });
+          }
+          segments.push({ type: "number", value: match[0] });
+          cursor = match.index + match[0].length;
+        }
+
+        if (cursor < text.length) {
+          segments.push({ type: "text", value: text.slice(cursor) });
+        }
+
+        return segments.length ? segments : [{ type: "text", value: text }];
+      }
+
+      function createCounterTextSegment(text) {
+        const node = document.createElement("span");
+        node.className = "live-counter-segment live-counter-segment--text";
+        node.textContent = text;
+        node.setAttribute("aria-hidden", "true");
+        return node;
+      }
+
+      function createCounterChar(char, { previousChar = "", animate = false } = {}) {
+        const node = document.createElement("span");
+        const safeChar = char === " " ? "\u00A0" : char;
+        const safePreviousChar = previousChar === " " ? "\u00A0" : previousChar;
+        const isDigit = /\d/.test(char);
+
+        node.className = `live-counter-char${isDigit ? " is-digit" : ""}${animate ? " is-flipping" : ""}`;
+        node.setAttribute("aria-hidden", "true");
+
+        if (animate && isDigit && /\d/.test(previousChar)) {
+          const stack = document.createElement("span");
+          stack.className = "live-counter-stack";
+
+          const oldFace = document.createElement("span");
+          oldFace.className = "live-counter-face live-counter-face--old";
+          oldFace.textContent = safePreviousChar;
+
+          const newFace = document.createElement("span");
+          newFace.className = "live-counter-face live-counter-face--new";
+          newFace.textContent = safeChar;
+
+          stack.append(oldFace, newFace);
+          node.append(stack);
+          return node;
+        }
+
+        const glyph = document.createElement("span");
+        glyph.className = "live-counter-glyph";
+        glyph.textContent = safeChar;
+        node.append(glyph);
+        return node;
+      }
+
+      function createCounterNumberSegment(nextValue, previousValue, animateDigits) {
+        const node = document.createElement("span");
+        node.className = "live-counter-segment live-counter-segment--number";
+
+        const nextChars = Array.from(nextValue);
+        const previousChars = Array.from(previousValue);
+
+        for (let reverseIndex = 0; reverseIndex < nextChars.length; reverseIndex += 1) {
+          const nextChar = nextChars[nextChars.length - 1 - reverseIndex];
+          const previousChar = previousChars[previousChars.length - 1 - reverseIndex] || "";
+          const shouldAnimate =
+            animateDigits &&
+            /\d/.test(nextChar) &&
+            /\d/.test(previousChar) &&
+            nextChar !== previousChar;
+
+          node.prepend(
+            createCounterChar(nextChar, {
+              previousChar: /\d/.test(previousChar) ? previousChar : nextChar,
+              animate: shouldAnimate,
+            })
+          );
+        }
+
+        return node;
+      }
+
+      function renderCounterText(element, nextText, { animate = true } = {}) {
+        if (!element) return;
+
+        const nextValue = String(nextText ?? "");
+        const previousValue = element.dataset.counterValue || "";
+        if (previousValue === nextValue) return;
+
+        if (!/\d/.test(nextValue)) {
+          element.classList.remove("live-counter");
+          element.removeAttribute("aria-label");
+          element.textContent = nextValue;
+          element.dataset.counterValue = nextValue;
+          return;
+        }
+
+        const nextSegments = splitCounterSegments(nextValue);
+        const previousNumberSegments = splitCounterSegments(previousValue)
+          .filter((segment) => segment.type === "number")
+          .map((segment) => segment.value);
+        const fragment = document.createDocumentFragment();
+        const shouldAnimate = Boolean(
+          animate &&
+          previousValue &&
+          !prefersReducedMotion.matches
+        );
+        let numberSegmentIndex = 0;
+
+        nextSegments.forEach((segment) => {
+          if (segment.type === "text") {
+            fragment.append(createCounterTextSegment(segment.value));
+            return;
+          }
+
+          fragment.append(
+            createCounterNumberSegment(
+              segment.value,
+              previousNumberSegments[numberSegmentIndex] || "",
+              shouldAnimate
+            )
+          );
+          numberSegmentIndex += 1;
+        });
+
+        element.classList.add("live-counter");
+        element.setAttribute("aria-label", nextValue);
+        element.replaceChildren(fragment);
+        element.dataset.counterValue = nextValue;
+      }
+
+      function getRateLimitBackoffMs(response) {
+        const remaining = Number(response.headers.get("x-ratelimit-remaining"));
+        const resetAt = Number(response.headers.get("x-ratelimit-reset"));
+
+        if (
+          Number.isFinite(resetAt) &&
+          resetAt > 0 &&
+          (
+            response.status === 403 ||
+            response.status === 429 ||
+            (Number.isFinite(remaining) && remaining <= 5)
+          )
+        ) {
+          return Math.max((resetAt * 1000) - Date.now() + 1000, liveRefreshErrorMs);
+        }
+
+        return null;
+      }
 
       function assetMatches(assetName, matchers) {
         const name = assetName.toLowerCase();
@@ -1341,12 +1615,15 @@
           button.href = latestAsset.browser_download_url;
           button.textContent = "Download APK";
           button.classList.remove("btn-disabled");
-          count.textContent = `${numberFormat.format(totalDownloadsForBuild)} total downloads`;
+          renderCounterText(
+            count,
+            `${numberFormat.format(totalDownloadsForBuild)} total downloads`
+          );
         } else {
           button.href = latestReleasePage;
           button.textContent = "Not in release";
           button.classList.add("btn-disabled");
-          count.textContent = build.fallbackText;
+          renderCounterText(count, build.fallbackText, { animate: false });
         }
       }
 
@@ -1474,19 +1751,42 @@
         });
       }
 
-      async function loadReleaseData() {
+      async function loadReleaseData({ preserveOnError = false } = {}) {
+        if (releaseDataRequestInFlight) return;
+
         const versionEl = document.getElementById("stat-version");
         const totalDownloadsEl = document.getElementById("stat-total-downloads");
         const statusEl = document.getElementById("stat-status");
         const bannerTitleEl = document.getElementById("release-banner-title");
         const bannerCopyEl = document.getElementById("release-banner-copy");
+        let nextRefreshDelay = document.hidden
+          ? liveRefreshHiddenMs
+          : getNextLiveRefreshDelay();
+
+        releaseDataRequestInFlight = true;
 
         try {
-          const response = await fetch(releasesApi, {
-            headers: { Accept: "application/vnd.github+json" },
-          });
+          const headers = { Accept: "application/vnd.github+json" };
+          if (releaseDataEtag) {
+            headers["If-None-Match"] = releaseDataEtag;
+          }
+
+          const response = await fetch(releasesApi, { headers });
+          const rateLimitBackoffMs = getRateLimitBackoffMs(response);
+          if (rateLimitBackoffMs != null) {
+            nextRefreshDelay = rateLimitBackoffMs;
+          }
+
+          if (response.status === 304) {
+            return;
+          }
 
           if (!response.ok) throw new Error(`API error ${response.status}`);
+
+          const responseEtag = response.headers.get("etag");
+          if (responseEtag) {
+            releaseDataEtag = responseEtag;
+          }
 
           const releases = await response.json();
           const publishedReleases = releases.filter((r) => !r.draft && !r.prerelease);
@@ -1507,7 +1807,7 @@
             versionEl.textContent = latest.tag_name || latest.name || "Latest";
           }
           if (totalDownloadsEl) {
-            totalDownloadsEl.textContent = numberFormat.format(allDownloads);
+            renderCounterText(totalDownloadsEl, numberFormat.format(allDownloads));
           }
           if (statusEl) {
             statusEl.textContent = "Live";
@@ -1516,7 +1816,10 @@
             bannerTitleEl.textContent = `Latest release: ${latest.name || latest.tag_name}`;
           }
           if (bannerCopyEl) {
-            bannerCopyEl.textContent = `${numberFormat.format(latestDownloads)} downloads in the latest release, published ${publishedAt}.`;
+            renderCounterText(
+              bannerCopyEl,
+              `${numberFormat.format(latestDownloads)} downloads in the latest release, published ${publishedAt}.`
+            );
           }
 
           const hasSamsungBuild = Boolean(findBuildAsset(latest.assets || [], ["-samsung.apk"]));
@@ -1534,34 +1837,47 @@
             setBuildCardState(build, latestAsset, totalDownloadsForBuild);
           }
         } catch (error) {
-          if (versionEl) {
-            versionEl.textContent = "Latest";
-          }
-          if (totalDownloadsEl) {
-            totalDownloadsEl.textContent = "N/A";
-          }
-          if (statusEl) {
-            statusEl.textContent = "API Error";
-          }
-          if (bannerTitleEl) {
-            bannerTitleEl.textContent = "Release data unavailable";
-          }
-          if (bannerCopyEl) {
-            bannerCopyEl.textContent = "You can download the APK manually from GitHub.";
-          }
+          nextRefreshDelay = Math.max(nextRefreshDelay, liveRefreshErrorMs);
 
-          for (const build of builds) {
-            const button = document.getElementById(`button-${build.key}`);
-            const count = document.getElementById(`count-${build.key}`);
-            if (button) {
-              button.href = latestReleasePage;
-              button.textContent = "Open GitHub";
-              button.classList.remove("btn-disabled");
+          if (!preserveOnError) {
+            if (versionEl) {
+              versionEl.textContent = "Latest";
             }
-            if (count) count.textContent = "Could not load stats.";
+            if (totalDownloadsEl) {
+              renderCounterText(totalDownloadsEl, "N/A", { animate: false });
+            }
+            if (statusEl) {
+              statusEl.textContent = "API Error";
+            }
+            if (bannerTitleEl) {
+              bannerTitleEl.textContent = "Release data unavailable";
+            }
+            if (bannerCopyEl) {
+              renderCounterText(
+                bannerCopyEl,
+                "You can download the APK manually from GitHub.",
+                { animate: false }
+              );
+            }
+
+            for (const build of builds) {
+              const button = document.getElementById(`button-${build.key}`);
+              const count = document.getElementById(`count-${build.key}`);
+              if (button) {
+                button.href = latestReleasePage;
+                button.textContent = "Open GitHub";
+                button.classList.remove("btn-disabled");
+              }
+              if (count) {
+                renderCounterText(count, "Could not load stats.", { animate: false });
+              }
+            }
           }
 
           console.error("Failed to load release data", error);
+        } finally {
+          releaseDataRequestInFlight = false;
+          scheduleReleaseDataRefresh(nextRefreshDelay);
         }
       }
 
@@ -1569,6 +1885,11 @@
       hydrateStaticIcons();
       initFaqAccordion();
       applyRecommendedBuild(looksLikeSamsungDevice() ? "samsung" : defaultRecommendedBuild);
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) {
+          scheduleReleaseDataRefresh(450);
+        }
+      });
       loadReleaseData();
     </script>
   </body>

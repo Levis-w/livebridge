@@ -38,8 +38,12 @@ class NetworkSpeedNotificationBuilder(
         )
     }
 
-    fun build(sample: NetworkSpeedSample): Notification {
+    fun build(
+        sample: NetworkSpeedSample,
+        minPromotedBytesPerSecond: Long = 0L
+    ): Notification {
         ensureChannel()
+        val text = localizedText()
 
         val contentIntent = PendingIntent.getActivity(
             context,
@@ -56,10 +60,12 @@ class NetworkSpeedNotificationBuilder(
             append("  ↑")
             append(NetworkSpeedFormatter.formatCompact(sample.uploadBytesPerSecond))
         }
+        val shouldPromote =
+            sample.totalBytesPerSecond >= minPromotedBytesPerSecond.coerceAtLeast(0L)
 
-        return NotificationCompat.Builder(context, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_speed)
-            .setContentTitle(localizedText().notificationTitle)
+            .setContentTitle(text.notificationTitle)
             .setContentText(detailText)
             .setContentIntent(contentIntent)
             .setOngoing(true)
@@ -69,9 +75,14 @@ class NetworkSpeedNotificationBuilder(
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .setShortCriticalText(NetworkSpeedFormatter.formatCompact(sample.totalBytesPerSecond))
-            .setRequestPromotedOngoing(true)
-            .build()
+
+        if (shouldPromote) {
+            builder
+                .setShortCriticalText(NetworkSpeedFormatter.formatCompact(sample.totalBytesPerSecond))
+                .setRequestPromotedOngoing(true)
+        }
+
+        return builder.build()
     }
 
     private fun localizedText(): LocalizedText {

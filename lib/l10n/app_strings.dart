@@ -151,6 +151,24 @@ class AppStrings {
       ? 'Доступно обновление${version.isNotEmpty ? ': $version' : ''}'
       : 'Update available${version.isNotEmpty ? ': $version' : ''}';
   String get experimentalTitle => isRu ? 'Экспериментальное' : 'Experimental';
+  String get notificationDedupTitle =>
+      isRu ? 'Notification dedup' : 'Notification dedup';
+  String get notificationDedupSubtitle => isRu
+      ? 'Убирает оригинальные clearable-уведомления, если LiveBridge уже показал свой OTP или статус.'
+      : 'Dismisses original clearable notifications after LiveBridge mirrors an OTP or status update.';
+  String get notificationDedupModeLabel =>
+      isRu ? 'Режим dedup' : 'Dedup mode';
+  String get notificationDedupModeOtpStatus => isRu
+      ? 'OTP и статусы'
+      : 'OTP and statuses';
+  String get notificationDedupModeOtpOnly =>
+      isRu ? 'Только OTP' : 'OTP only';
+  String get notificationDedupStatusesTitle => isRu
+      ? 'Также статусы'
+      : 'Also dedup statuses';
+  String get notificationDedupStatusesSubtitle => isRu
+      ? 'Если выключено, dedup применяется только к OTP-кодам.'
+      : 'When disabled, dedup is applied only to OTP notifications.';
   String get animatedIslandTitle =>
       isRu ? 'Анимированный остров' : 'Animated island';
   String get animatedIslandSubtitle => isRu
@@ -225,6 +243,9 @@ class AppStrings {
       isRu ? 'Приложения для кодов' : 'Choose apps for code detection';
   String get bypassPickerTitle =>
       isRu ? 'Приложения bypass' : 'Choose apps for bypass';
+  String get notificationDedupPickerTitle => isRu
+      ? 'Приложения для dedup'
+      : 'Choose apps for notification dedup';
   String get applySelection => isRu ? 'Применить выбор' : 'Apply selection';
   String get searchAppHint =>
       isRu ? 'Поиск по названию или пакету' : 'Search by app or package';

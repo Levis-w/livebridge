@@ -121,7 +121,7 @@ object LiveUpdateNotifier {
         }
     }
 
-    fun maybeMirror(context: Context, prefs: ConverterPrefs, sbn: StatusBarNotification): Boolean {
+    fun maybeMirror(context: Context, prefs: ConverterPrefs, sbn: StatusBarNotification): MirrorResult {
         ensureChannel(context)
 
         val manager = NotificationManagerCompat.from(context)
@@ -131,7 +131,7 @@ object LiveUpdateNotifier {
             }
             staleAggregateIds.forEach(manager::cancel)
             manager.cancel(mirrorIdForKey(sbn.key))
-            return false
+            return notMirroredResult()
         }
         if (prefs.getSyncDndEnabled() && isDoNotDisturbActive(context)) {
             val staleAggregateIds = synchronized(stateLock) {
@@ -139,7 +139,7 @@ object LiveUpdateNotifier {
             }
             staleAggregateIds.forEach(manager::cancel)
             manager.cancel(mirrorIdForKey(sbn.key))
-            return false
+            return notMirroredResult()
         }
 
         return try {
@@ -149,7 +149,7 @@ object LiveUpdateNotifier {
                 }
                 staleAggregateIds.forEach(manager::cancel)
                 manager.cancel(mirrorIdForKey(sbn.key))
-                return false
+                return notMirroredResult()
             }
             val appPresentationOverride = AppPresentationOverridesLoader
                 .get(prefs)
@@ -182,7 +182,7 @@ object LiveUpdateNotifier {
                     smartShortTextOverride = null,
                     allowNavigationIconHeuristics = false
                 )
-                return true
+                return mirroredResult()
             }
             val parserDictionary = LiveParserDictionaryLoader.get(context, prefs)
             val mediaPlaybackSmartEnabled = prefs.getSmartMediaPlaybackEnabled()
@@ -192,7 +192,7 @@ object LiveUpdateNotifier {
                 }
                 staleAggregateIds.forEach(manager::cancel)
                 manager.cancel(mirrorIdForKey(sbn.key))
-                return false
+                return notMirroredResult()
             }
             val source = sbn.notification
             val hasNativeProgress = hasEffectiveProgress(sbn.packageName, source)
@@ -268,7 +268,7 @@ object LiveUpdateNotifier {
                 }
                 staleAggregateIds.forEach(manager::cancel)
                 manager.cancel(mirrorIdForKey(sbn.key))
-                return false
+                return notMirroredResult()
             }
 
             if (!hasNativeProgress &&
@@ -283,7 +283,7 @@ object LiveUpdateNotifier {
                 }
                 staleAggregateIds.forEach(manager::cancel)
                 manager.cancel(mirrorIdForKey(sbn.key))
-                return false
+                return notMirroredResult()
             }
 
             when {
@@ -330,7 +330,7 @@ object LiveUpdateNotifier {
                         textOverride = mediaText,
                         largeIconOverride = mediaLargeIcon
                     )
-                    true
+                    mirroredResult()
                 }
 
                 otpMatch != null -> {
@@ -423,7 +423,7 @@ object LiveUpdateNotifier {
                             )
                         }
                     }
-                    true
+                    mirroredResult(dedupKind = MirrorDedupKind.OTP)
                 }
 
                 textProgressMatch != null -> {
@@ -458,7 +458,7 @@ object LiveUpdateNotifier {
                         otpOverride = null,
                         smartShortTextOverride = textProgressMatch.shortText
                     )
-                    true
+                    mirroredResult()
                 }
 
                 smartMatch != null -> {
@@ -506,6 +506,11 @@ object LiveUpdateNotifier {
                     val sourceSbn = routeState.sourceSbn
                     val sourceNotification = sourceSbn.notification
                     val smartRuleId = smartRuleIdFromAggregateKey(smartMatch.aggregateKey)
+                    val dedupKind = if (isNotificationDedupEligibleSmartRule(smartRuleId)) {
+                        MirrorDedupKind.STATUS
+                    } else {
+                        MirrorDedupKind.NONE
+                    }
                     val defaultSmartStatus = smartShortStatusText(
                         context = context,
                         ruleId = smartRuleId,
@@ -599,7 +604,7 @@ object LiveUpdateNotifier {
                             initialToken = smartStatusText
                         )
                     }
-                    true
+                    mirroredResult(dedupKind = dedupKind)
                 }
 
                 else -> {
@@ -628,12 +633,12 @@ object LiveUpdateNotifier {
                         otpOverride = null,
                         smartShortTextOverride = null
                     )
-                    true
+                    mirroredResult()
                 }
             }
         } catch (error: Throwable) {
             Log.e(TAG, "Failed to mirror notification: ${sbn.key}", error)
-            false
+            notMirroredResult()
         }
     }
 
@@ -667,6 +672,17 @@ object LiveUpdateNotifier {
         } catch (error: Throwable) {
             Log.e(TAG, "Failed to cancel mirrored notification: ${sbn.key}", error)
         }
+    }
+
+    private fun notMirroredResult(): MirrorResult {
+        return MirrorResult(mirrored = false)
+    }
+
+    private fun mirroredResult(dedupKind: MirrorDedupKind = MirrorDedupKind.NONE): MirrorResult {
+        return MirrorResult(
+            mirrored = true,
+            dedupKind = dedupKind
+        )
     }
 
     private fun passesBaseFilters(
@@ -1064,6 +1080,13 @@ object LiveUpdateNotifier {
         }
 
         return null
+    }
+
+    private fun isNotificationDedupEligibleSmartRule(ruleId: String): Boolean {
+        return ruleId != "navigation" &&
+                ruleId != "weather" &&
+                ruleId != "external_device" &&
+                ruleId != "vpn"
     }
 
     private fun isExternalDeviceDebuggingNotification(text: String): Boolean {
@@ -3287,6 +3310,17 @@ object LiveUpdateNotifier {
         val icon: IconCompat?,
         val bitmap: Bitmap?
     )
+
+    data class MirrorResult(
+        val mirrored: Boolean,
+        val dedupKind: MirrorDedupKind = MirrorDedupKind.NONE
+    )
+
+    enum class MirrorDedupKind {
+        NONE,
+        OTP,
+        STATUS
+    }
 
     private data class SmartStageMatch(
         val aggregateKey: String,

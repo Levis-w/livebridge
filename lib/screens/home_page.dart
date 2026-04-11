@@ -14,7 +14,7 @@ import '../utils/livebridge_haptics.dart';
 import '../widgets/shared_widgets.dart';
 import 'app_presentation_settings_page.dart';
 
-enum _PackagePickerTarget { conversion, otp, bypass }
+enum _PackagePickerTarget { conversion, otp, bypass, dedup }
 
 class LiveBridgeHomePage extends StatefulWidget {
   const LiveBridgeHomePage({super.key});
@@ -42,12 +42,16 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
   static const String _expandableSettingNativeProgress = 'native_progress';
   static const String _expandableSettingNetworkSpeed = 'network_speed';
   static const String _expandableSettingExternalDevices = 'external_devices';
+  static const String _expandableSettingNotificationDedup =
+      'notification_dedup';
   static const int _networkSpeedThresholdStepBytesPerSecond = 8 * 1024;
   static const int _networkSpeedThresholdMaxBytesPerSecond = 1024 * 1024;
 
   final TextEditingController _rulesController = TextEditingController();
   final TextEditingController _otpRulesController = TextEditingController();
   final TextEditingController _bypassRulesController = TextEditingController();
+  final TextEditingController _notificationDedupRulesController =
+      TextEditingController();
   final ValueNotifier<int> _networkSpeedThresholdDraftBytesPerSecond =
       ValueNotifier<int>(0);
   final ValueNotifier<double> _networkSpeedThresholdSliderPosition =
@@ -70,6 +74,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
   bool _aospCuttingEnabled = false;
   bool _animatedIslandEnabled = false;
   bool _hyperBridgeEnabled = false;
+  bool _notificationDedupEnabled = false;
   bool _onlyWithProgress = true;
   bool _textProgressEnabled = true;
   bool _smartDetectionEnabled = true;
@@ -104,6 +109,9 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
   bool _previewAppsLoading = false;
   PackageMode _packageMode = PackageMode.all;
   PackageMode _otpPackageMode = PackageMode.all;
+  PackageMode _notificationDedupPackageMode = PackageMode.all;
+  NotificationDedupMode _notificationDedupMode =
+      NotificationDedupMode.otpStatus;
   late final AnimationController _masterBlockedShakeController;
   late final Animation<double> _masterBlockedShakeOffset;
   bool _masterBlockedHapticInProgress = false;
@@ -177,6 +185,7 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     _rulesController.dispose();
     _otpRulesController.dispose();
     _bypassRulesController.dispose();
+    _notificationDedupRulesController.dispose();
     _networkSpeedThresholdDraftBytesPerSecond.dispose();
     _networkSpeedThresholdSliderPosition.dispose();
     super.dispose();
@@ -229,6 +238,12 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
           await LiveBridgePlatform.getAnimatedIslandEnabled();
       final bool hyperBridgeEnabled =
           await LiveBridgePlatform.getHyperBridgeEnabled();
+      final bool notificationDedupEnabled =
+          await LiveBridgePlatform.getNotificationDedupEnabled();
+      final NotificationDedupMode notificationDedupMode =
+          NotificationDedupModeId.from(
+            await LiveBridgePlatform.getNotificationDedupMode(),
+          );
       final bool onlyWithProgress =
           await LiveBridgePlatform.getOnlyWithProgress();
       final bool textProgressEnabled =
@@ -284,6 +299,11 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
       );
       final String bypassPackageRules =
           await LiveBridgePlatform.getBypassPackageRules();
+      final String notificationDedupPackageRules =
+          await LiveBridgePlatform.getNotificationDedupPackageRules();
+      final PackageMode notificationDedupPackageMode = PackageModeId.from(
+        await LiveBridgePlatform.getNotificationDedupPackageMode(),
+      );
       final String otpPackageRules =
           await LiveBridgePlatform.getOtpPackageRules();
       final PackageMode otpPackageMode = PackageModeId.from(
@@ -334,6 +354,8 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         _aospCuttingEnabled = aospCuttingEnabled;
         _animatedIslandEnabled = animatedIslandEnabled;
         _hyperBridgeEnabled = hyperBridgeEnabled;
+        _notificationDedupEnabled = notificationDedupEnabled;
+        _notificationDedupMode = notificationDedupMode;
         _onlyWithProgress = onlyWithProgress;
         _textProgressEnabled = textProgressEnabled;
         _smartDetectionEnabled = smartDetectionEnabled;
@@ -361,8 +383,10 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         _deviceLabelForWarning = deviceInfo.label;
         _packageMode = packageMode;
         _otpPackageMode = otpPackageMode;
+        _notificationDedupPackageMode = notificationDedupPackageMode;
         _rulesController.text = packageRules;
         _bypassRulesController.text = bypassPackageRules;
+        _notificationDedupRulesController.text = notificationDedupPackageRules;
         _otpRulesController.text = otpPackageRules;
         _isLoading = false;
       });
@@ -401,6 +425,14 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         case _PackagePickerTarget.bypass:
           await LiveBridgePlatform.setBypassPackageRules(
             _bypassRulesController.text,
+          );
+          break;
+        case _PackagePickerTarget.dedup:
+          await LiveBridgePlatform.setNotificationDedupPackageRules(
+            _notificationDedupRulesController.text,
+          );
+          await LiveBridgePlatform.setNotificationDedupPackageMode(
+            _notificationDedupPackageMode.id,
           );
           break;
       }
@@ -494,6 +526,18 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     LiveBridgeHaptics.toggle(value);
     setState(() => _hyperBridgeEnabled = value);
     await LiveBridgePlatform.setHyperBridgeEnabled(value);
+  }
+
+  Future<void> _setNotificationDedupEnabled(bool value) async {
+    LiveBridgeHaptics.toggle(value);
+    setState(() => _notificationDedupEnabled = value);
+    await LiveBridgePlatform.setNotificationDedupEnabled(value);
+  }
+
+  Future<void> _setNotificationDedupMode(NotificationDedupMode value) async {
+    LiveBridgeHaptics.selection();
+    setState(() => _notificationDedupMode = value);
+    await LiveBridgePlatform.setNotificationDedupMode(value.id);
   }
 
   Future<void> _setUpdateChecksEnabled(bool value) async {
@@ -970,6 +1014,10 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         targetController = _bypassRulesController;
         pickerTitle = s.bypassPickerTitle;
         break;
+      case _PackagePickerTarget.dedup:
+        targetController = _notificationDedupRulesController;
+        pickerTitle = s.notificationDedupPickerTitle;
+        break;
     }
     final Set<String> initial = _parsePackagesFromInput(targetController.text);
 
@@ -1302,6 +1350,9 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
     final List<String> bypassPackageRules = _parseRulesText(
       _bypassRulesController.text,
     );
+    final List<String> notificationDedupPackageRules = _parseRulesText(
+      _notificationDedupRulesController.text,
+    );
     final List<String> otpPackageRules = _parseRulesText(
       _otpRulesController.text,
     );
@@ -1367,6 +1418,8 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         'aosp_cutting_enabled': _aospCuttingEnabled,
         'animated_island_enabled': _animatedIslandEnabled,
         'hyper_bridge_enabled': _hyperBridgeEnabled,
+        'notification_dedup_enabled': _notificationDedupEnabled,
+        'notification_dedup_mode': _notificationDedupMode.id,
       },
       'rules': <String, dynamic>{
         'package_mode': _packageMode.id,
@@ -1374,6 +1427,10 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         'package_rules_count': packageRules.length,
         'bypass_package_rules': bypassPackageRules,
         'bypass_package_rules_count': bypassPackageRules.length,
+        'notification_dedup_package_mode': _notificationDedupPackageMode.id,
+        'notification_dedup_package_rules': notificationDedupPackageRules,
+        'notification_dedup_package_rules_count':
+            notificationDedupPackageRules.length,
         'otp_package_mode': _otpPackageMode.id,
         'otp_package_rules': otpPackageRules,
         'otp_package_rules_count': otpPackageRules.length,
@@ -2026,6 +2083,18 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
             activeThumbColor: colorScheme.primary,
           ),
           const SizedBox(height: 8),
+          _buildExpandableTile(
+            settingId: _expandableSettingNotificationDedup,
+            title: s.notificationDedupTitle,
+            subtitle: s.notificationDedupSubtitle,
+            trailing: Switch.adaptive(
+              value: _notificationDedupEnabled,
+              onChanged: _setNotificationDedupEnabled,
+              activeThumbColor: colorScheme.primary,
+            ),
+            expandedChild: _buildNotificationDedupOptionsPanel(s),
+          ),
+          const SizedBox(height: 8),
           SwitchListTile.adaptive(
             value: _hyperBridgeEnabled,
             onChanged: _setHyperBridge,
@@ -2277,6 +2346,21 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget _buildNotificationDedupStatusesSwitchRow(AppStrings s) {
+    final bool value = _notificationDedupMode == NotificationDedupMode.otpStatus;
+    return _buildInlinePanelSwitchRow(
+      title: s.notificationDedupStatusesTitle,
+      subtitle: s.notificationDedupStatusesSubtitle,
+      value: value,
+      onChanged: (bool enabled) {
+        final NotificationDedupMode nextMode = enabled
+            ? NotificationDedupMode.otpStatus
+            : NotificationDedupMode.otpOnly;
+        unawaited(_setNotificationDedupMode(nextMode));
+      },
     );
   }
 
@@ -2978,6 +3062,59 @@ class _LiveBridgeHomePageState extends State<LiveBridgeHomePage>
         subtitle: s.textProgressSubtitle,
         value: _textProgressEnabled,
         onChanged: _setTextProgressEnabled,
+      ),
+    );
+  }
+
+  Widget _buildNotificationDedupOptionsPanel(AppStrings s) {
+    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.surface.withValues(alpha: 0.86),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          _buildNotificationDedupStatusesSwitchRow(s),
+          const SizedBox(height: 14),
+          _buildModernDropdown(
+            label: s.modeLabel,
+            currentValue: _notificationDedupPackageMode,
+            onChanged: (PackageMode? value) {
+              if (value == null) {
+                return;
+              }
+              LiveBridgeHaptics.selection();
+              setState(() => _notificationDedupPackageMode = value);
+              unawaited(_persistRules(target: _PackagePickerTarget.dedup));
+            },
+            onTap: LiveBridgeHaptics.openSurface,
+            s: s,
+          ),
+          const SizedBox(height: 16),
+          _selectedAppsNote(
+            noteId: 'dedup',
+            selectedPackages: _parsePackagesFromInput(
+              _notificationDedupRulesController.text,
+            ),
+            s: s,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            s.pickAppsHint,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _ruleButtonsRow(
+            onPick: () => _openPackagePicker(target: _PackagePickerTarget.dedup),
+            s: s,
+          ),
+        ],
       ),
     );
   }

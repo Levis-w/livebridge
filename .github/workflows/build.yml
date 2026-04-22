@@ -40,6 +40,9 @@ jobs:
       - name: Build Samsung debug APK
         run: flutter build apk --debug --target-platform android-arm64 2>&1 | tail -30
       
+      - name: List build outputs
+        run: find . -name "*.apk" -type f 2>/dev/null
+      
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:

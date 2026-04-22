@@ -38,14 +38,15 @@ jobs:
         run: flutter pub get
       
       - name: Build Samsung debug APK
-        run: flutter build apk --debug --target-platform android-arm64 2>&1 | tail -30
-      
-      - name: List build outputs
-        run: find . -name "*.apk" -type f 2>/dev/null
+        run: |
+          flutter build apk --debug --target-platform android-arm64
+          echo "=== APK files found ==="
+          find . -name "*.apk" -type f
+          ls -la build/app/outputs/flutter-apk/ 2>/dev/null || echo "flutter-apk dir not found"
       
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: livebridge-samsung-debug
-          path: build/app/outputs/flutter-apk/app-arm64-debug.apk
+          path: build/app/outputs/flutter-apk/
           retention-days: 7

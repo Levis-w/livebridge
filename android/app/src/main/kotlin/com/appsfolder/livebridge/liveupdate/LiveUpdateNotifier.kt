@@ -49,8 +49,8 @@ object LiveUpdateNotifier {
     private const val OTP_AUTOCOPY_COPIED_SHOW_DELAY_MS = 1_000L
     private const val OTP_AUTOCOPY_COPIED_SHOW_DURATION_MS = 1_500L
     private const val AOSP_ISLAND_TEXT_LIMIT = 7
-    private const val SMART_ISLAND_ANIMATION_MIN_DELAY_MS = 2_000L
-    private const val SMART_ISLAND_ANIMATION_MAX_DELAY_MS = 3_000L
+    private const val SMART_ISLAND_ANIMATION_MIN_DELAY_MS = 10_000L
+    private const val SMART_ISLAND_ANIMATION_MAX_DELAY_MS = 10_000L
     private const val SMART_ISLAND_TOKEN_MAX_LENGTH = 20
 
     private val OTP_CODE_LENGTH = 4..8

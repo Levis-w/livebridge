@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -34,10 +37,23 @@ jobs:
           flutter build apk --debug --target-platform android-arm64
           echo "=== APK files found ==="
           find . -name "*.apk" -type f
+          echo "=== Build outputs ==="
+          ls -la build/app/outputs/flutter-apk/ 2>/dev/null || echo "flutter-apk dir not found"
+      
+      - name: Find and upload APK
+        run: |
+          APK_FILE=$(find . -name "*.apk" -type f | grep -v ".gradle" | head -1)
+          if [ -n "$APK_FILE" ]; then
+            echo "Found APK: $APK_FILE"
+            echo "APK_PATH=$APK_FILE" >> $GITHUB_ENV
+          else
+            echo "No APK found!"
+            exit 1
+          fi
       
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: livebridge-samsung-debug
-          path: build/app/outputs/flutter-apk/
+          path: ${{ env.APK_PATH }}
           retention-days: 7
